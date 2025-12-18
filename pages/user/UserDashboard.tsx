@@ -23,7 +23,7 @@ export const UserDashboard: React.FC = () => {
           
           const txs = await getTransactions(id);
           if (!isMounted.current) return;
-          setTransactions(txs.reverse().slice(0, 5));
+          setTransactions(txs.slice(0, 5));
         }
         const news = await getAnnouncements();
         if (!isMounted.current) return;
@@ -36,6 +36,7 @@ export const UserDashboard: React.FC = () => {
   useEffect(() => {
     isMounted.current = true;
     fetchData();
+    // This listener catches the 'db_change' event fired from TaskRunner
     const unsubscribe = subscribeToChanges(() => {
         if (isMounted.current) fetchData();
     });
@@ -51,11 +52,11 @@ export const UserDashboard: React.FC = () => {
     try {
         const result = await claimDailyReward(user.id);
         if (isMounted.current) {
-             alert(result.message);
+             alert(result.reward ? `Claimed ${result.reward} points!` : result.message);
              await fetchData();
         }
-    } catch (e) {
-        console.error(e);
+    } catch (e: any) {
+        alert(e.message || "Failed to check in.");
     } finally {
         if (isMounted.current) setIsClaiming(false);
     }
@@ -63,8 +64,8 @@ export const UserDashboard: React.FC = () => {
 
   const isCheckedInToday = () => {
       if (!user?.lastDailyCheckIn) return false;
-      const today = new Date().toDateString();
-      const last = new Date(user.lastDailyCheckIn).toDateString();
+      const today = new Date().toISOString().split('T')[0];
+      const last = user.lastDailyCheckIn.split('T')[0];
       return today === last;
   };
 
@@ -72,14 +73,21 @@ export const UserDashboard: React.FC = () => {
       setDismissedNews([...dismissedNews, id]);
   };
 
-  if (!user) return <div className="text-white text-center mt-10">Loading Dashboard...</div>;
+  if (!user) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-900">
+        <div className="text-center">
+            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading Balance...</p>
+        </div>
+    </div>
+  );
 
   const activeNews = announcements.filter(a => !dismissedNews.includes(a.id));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-500">
       
-      {/* Announcements Section */}
+      {/* Announcements */}
       {activeNews.length > 0 && (
           <div className="space-y-3">
               {activeNews.slice(0, 2).map(news => (
@@ -107,101 +115,97 @@ export const UserDashboard: React.FC = () => {
       )}
 
       {/* Balance Card */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-6 shadow-lg text-white">
-        <div className="flex justify-between items-start">
-            <div>
-                <h2 className="text-sm font-medium opacity-80">Total Balance</h2>
-                <div className="flex items-baseline gap-1 mt-2">
-                    <span className="text-4xl font-bold">{user.balance.toFixed(2)}</span>
-                    <span className="text-lg">Points</span>
-                </div>
+      <div className="bg-gradient-to-br from-blue-600 to-indigo-800 rounded-2xl p-6 shadow-xl text-white relative overflow-hidden">
+        <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+        <div className="relative z-10">
+            <h2 className="text-xs font-bold uppercase tracking-wider opacity-70">Available Points</h2>
+            <div className="flex items-baseline gap-2 mt-2">
+                <span className="text-5xl font-black">{user.balance.toFixed(0)}</span>
+                <span className="text-sm font-bold opacity-80">USDT-Pts</span>
             </div>
-            <div className="bg-white/20 p-2 rounded-lg">
-                <Zap className="text-yellow-300" />
+            <div className="mt-6 flex gap-2">
+                <Link to="/tasks" className="flex-1 bg-white/20 hover:bg-white/30 text-center py-2.5 rounded-xl backdrop-blur-md transition font-bold text-sm">
+                    Earn More
+                </Link>
+                <Link to="/wallet" className="flex-1 bg-white text-blue-700 font-black text-center py-2.5 rounded-xl hover:bg-gray-100 transition text-sm">
+                    Withdraw
+                </Link>
             </div>
-        </div>
-        <div className="mt-6 flex gap-3">
-            <Link to="/tasks" className="flex-1 bg-white/20 hover:bg-white/30 text-center py-2 rounded-lg backdrop-blur-sm transition text-sm font-bold">
-                Tasks
-            </Link>
-            <Link to="/friends" className="flex-1 bg-white/20 hover:bg-white/30 text-center py-2 rounded-lg backdrop-blur-sm transition text-sm font-bold">
-                Invite
-            </Link>
-            <Link to="/wallet" className="flex-1 bg-white text-blue-600 font-bold text-center py-2 rounded-lg hover:bg-gray-100 transition text-sm">
-                Withdraw
-            </Link>
         </div>
       </div>
 
-      {/* Daily Check-in */}
-      <div className="bg-gray-800 rounded-xl p-4 border border-gray-700 flex justify-between items-center">
-          <div>
-              <h3 className="text-white font-bold flex items-center gap-2">
-                  <CalendarCheck className="text-green-400" size={20} /> Daily Check-in
-              </h3>
-              <p className="text-gray-400 text-xs mt-1">
-                  Streak: <span className="text-orange-400 font-bold">{user.dailyStreak || 0} Days</span>
-              </p>
+      {/* Daily Reward */}
+      <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700 flex justify-between items-center shadow-lg">
+          <div className="flex items-center gap-4">
+              <div className="bg-green-500/20 p-3 rounded-xl">
+                  <CalendarCheck className="text-green-400" size={24} />
+              </div>
+              <div>
+                  <h3 className="text-white font-bold">Daily Reward</h3>
+                  <p className="text-gray-400 text-xs">
+                      Streak: <span className="text-orange-400 font-bold">{user.dailyStreak || 0} Days</span>
+                  </p>
+              </div>
           </div>
           <button 
             onClick={handleDailyCheckIn}
             disabled={isCheckedInToday() || isClaiming}
-            className={`px-4 py-2 rounded-lg text-sm font-bold transition ${
+            className={`px-5 py-2.5 rounded-xl text-sm font-black transition-all ${
                 isCheckedInToday() 
                 ? 'bg-gray-700 text-gray-500 cursor-not-allowed' 
-                : 'bg-green-600 hover:bg-green-700 text-white animate-pulse'
+                : 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-900/20 scale-105 active:scale-95'
             }`}
           >
-             {isCheckedInToday() ? 'Claimed' : 'Claim'}
+             {isCheckedInToday() ? 'Claimed' : 'Claim Now'}
           </button>
       </div>
 
-      {/* Stats */}
+      {/* Quick Stats */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-            <div className="flex justify-between items-start mb-2">
-                <div className="bg-green-500/20 w-10 h-10 rounded-full flex items-center justify-center">
-                    <TrendingUp className="text-green-500" size={20} />
+        <div className="bg-gray-800 p-5 rounded-2xl border border-gray-700 shadow-lg">
+            <div className="flex justify-between items-start mb-3">
+                <div className="bg-blue-500/20 p-2 rounded-lg">
+                    <TrendingUp className="text-blue-500" size={20} />
                 </div>
-                <Link to="/leaderboard" className="text-xs text-yellow-500 hover:text-yellow-400 flex items-center gap-1">
-                    <Trophy size={12} /> Top 10
-                </Link>
+                <Trophy size={16} className="text-yellow-500" />
             </div>
-            <p className="text-gray-400 text-xs">Total Earned</p>
-            <p className="text-white font-bold text-lg">
-                {transactions.filter(t => t.type === 'EARNING' || t.type === 'BONUS' || t.type === 'REFERRAL').reduce((acc, curr) => acc + curr.amount, 0)}
+            <p className="text-gray-400 text-xs font-bold uppercase tracking-tighter">Total Earned</p>
+            <p className="text-white font-black text-xl mt-1">
+                {transactions.filter(t => t.type !== 'WITHDRAWAL').reduce((acc, curr) => acc + curr.amount, 0)}
             </p>
         </div>
-        <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-            <div className="bg-orange-500/20 w-10 h-10 rounded-full flex items-center justify-center mb-2">
+        <div className="bg-gray-800 p-5 rounded-2xl border border-gray-700 shadow-lg">
+            <div className="bg-orange-500/20 p-2 rounded-lg mb-3 w-fit">
                 <Award className="text-orange-500" size={20} />
             </div>
-            <p className="text-gray-400 text-xs">Tasks Done</p>
-            <p className="text-white font-bold text-lg">
+            <p className="text-gray-400 text-xs font-bold uppercase tracking-tighter">Tasks Done</p>
+            <p className="text-white font-black text-xl mt-1">
                 {transactions.filter(t => t.type === 'EARNING').length}
             </p>
         </div>
       </div>
 
       {/* Recent History */}
-      <div className="bg-gray-800 rounded-xl p-4 border border-gray-700">
-        <div className="flex justify-between items-center mb-4">
+      <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700 shadow-lg">
+        <div className="flex justify-between items-center mb-5">
             <h3 className="text-white font-bold flex items-center gap-2">
-                <Clock size={18} /> Activity
+                <Clock size={18} className="text-blue-400" /> Recent Activity
             </h3>
-            <Link to="/wallet" className="text-blue-400 text-xs hover:underline">View All</Link>
+            <Link to="/wallet" className="text-blue-400 text-xs font-bold hover:underline">See All</Link>
         </div>
         <div className="space-y-4">
             {transactions.length === 0 ? (
-                <p className="text-gray-500 text-center text-sm">No activity yet.</p>
+                <div className="text-center py-6">
+                    <p className="text-gray-600 text-sm">No activity records found.</p>
+                </div>
             ) : (
                 transactions.map(tx => (
-                    <div key={tx.id} className="flex justify-between items-center border-b border-gray-700 pb-2 last:border-0 last:pb-0">
-                        <div>
-                            <p className="text-white text-sm font-medium">{tx.description}</p>
-                            <p className="text-gray-500 text-xs">{new Date(tx.date).toLocaleDateString()}</p>
+                    <div key={tx.id} className="flex justify-between items-center border-b border-gray-700/50 pb-3 last:border-0 last:pb-0">
+                        <div className="min-w-0 pr-4">
+                            <p className="text-white text-sm font-bold truncate">{tx.description}</p>
+                            <p className="text-gray-500 text-[10px] mt-0.5">{new Date(tx.date).toLocaleString()}</p>
                         </div>
-                        <span className={`font-bold ${tx.type === 'WITHDRAWAL' ? 'text-red-400' : 'text-green-400'}`}>
+                        <span className={`font-black text-sm whitespace-nowrap ${tx.type === 'WITHDRAWAL' ? 'text-red-400' : 'text-green-400'}`}>
                             {tx.type === 'WITHDRAWAL' ? '-' : '+'}{tx.amount}
                         </span>
                     </div>

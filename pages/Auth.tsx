@@ -15,7 +15,7 @@ export const Auth: React.FC = () => {
   
   const loadingTimerRef = useRef<any>(null);
   
-  // Form States
+  // Form States - ENSURED EMPTY BY DEFAULT
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -31,6 +31,7 @@ export const Auth: React.FC = () => {
         return;
       }
 
+      // Pre-fill only from Telegram context
       const tg = (window as any).Telegram?.WebApp;
       if (tg) {
         tg.ready();
@@ -52,6 +53,7 @@ export const Auth: React.FC = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email || !password) return;
     setIsLoading(true);
     setError('');
     
@@ -64,7 +66,7 @@ export const Auth: React.FC = () => {
       }
       navigate(user.role === UserRole.ADMIN ? '/admin' : '/dashboard', { replace: true });
     } catch (err: any) {
-      setError(err.message || 'Login failed.');
+      setError(err.message || 'Login failed. Check your credentials.');
     } finally {
       setIsLoading(false);
     }
@@ -73,7 +75,7 @@ export const Auth: React.FC = () => {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password.length < 6) {
-      setError('Password too short');
+      setError('Password must be at least 6 characters');
       return;
     }
     setIsLoading(true);
@@ -102,7 +104,7 @@ export const Auth: React.FC = () => {
           <div className="min-h-screen flex items-center justify-center bg-gray-900">
               <div className="text-center">
                   <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                  <p className="text-gray-400">Connecting...</p>
+                  <p className="text-gray-400">Verifying Session...</p>
               </div>
           </div>
       );
@@ -110,20 +112,13 @@ export const Auth: React.FC = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4 relative">
-      <div className="absolute top-4 right-4 text-xs text-gray-600 flex items-center gap-1">
-          <Database size={12} /> Secure Cloud Storage
-      </div>
-
       <div className="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md border border-gray-700">
         <h2 className="text-3xl font-bold text-center text-white mb-6">
-          {isLogin ? 'Login' : 'Create Account'}
+          {isLogin ? 'Welcome Back' : 'Join Us'}
         </h2>
         
         {error && (
           <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-3 rounded mb-4 text-sm text-center">
-             <div className="flex items-center justify-center gap-2 font-bold mb-1">
-                 <AlertTriangle size={18} /> Error
-             </div>
              <p>{error}</p>
           </div>
         )}
@@ -197,7 +192,7 @@ export const Auth: React.FC = () => {
             {isLoading ? (
               <span className="flex items-center gap-2">
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Loading...
+                  Processing...
               </span>
             ) : (
               <>

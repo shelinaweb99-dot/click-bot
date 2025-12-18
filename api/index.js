@@ -60,7 +60,7 @@ const TaskSchema = new mongoose.Schema({
     durationSeconds: Number,
     totalLimit: Number,
     completedCount: { type: Number, default: 0 },
-    status: String,
+    status: { type: String, default: 'ACTIVE' },
     instructions: String
 });
 
@@ -96,7 +96,7 @@ const Transaction = mongoose.models.Transaction || mongoose.model('Transaction',
 const Withdrawal = mongoose.models.Withdrawal || mongoose.model('Withdrawal', WithdrawalSchema);
 const Setting = mongoose.models.Setting || mongoose.model('Setting', SettingSchema);
 
-// --- 3. HELPER: AUTHENTICATION MIDDLEWARE ---
+// --- 3. HELPER: AUTHENTICATION ---
 async function authenticateUser(req) {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
@@ -109,9 +109,7 @@ async function authenticateUser(req) {
 
 export default async function handler(req, res) {
     const origin = req.headers.origin;
-    if (origin) res.setHeader('Access-Control-Allow-Origin', origin);
-    else res.setHeader('Access-Control-Allow-Origin', '*');
-    
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
     res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
@@ -124,15 +122,18 @@ export default async function handler(req, res) {
         const { action, ...data } = req.body || {};
         const ipAddress = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
-        // --- A. PUBLIC ACTIONS ---
+        // --- A. LOGIN / REGISTER ---
         if (action === 'login' || action === 'register') {
             const { email, password, ...userData } = data;
             let user = await User.findOne({ email }).select('+password');
             const newToken = crypto.randomBytes(32).toString('hex');
 
             if (!user) {
+                if (action === 'login') return res.status(404).json({ success: false, message: "User not found. Please Sign Up." });
+                
                 if (!password || password.length < 6) return res.status(400).json({ success: false, message: "Password too short" });
                 const hashedPassword = await bcrypt.hash(password, 10);
+                
                 user = await User.create({
                     id: 'user_' + Date.now(),
                     email,
@@ -140,14 +141,14 @@ export default async function handler(req, res) {
                     ...userData,
                     sessionToken: newToken,
                     joinedAt: new Date().toISOString(),
-                    role: email === 'admin@admin.com' ? 'ADMIN' : 'USER',
+                    role: email.toLowerCase() === 'admin@admin.com' ? 'ADMIN' : 'USER',
                     ipAddress
                 });
             } else {
                 if (!password) return res.status(400).json({ success: false, message: "Password required" });
                 let passwordValid = false;
                 if (!user.password || !user.password.startsWith('$2')) {
-                    if (user.password === password || !user.password) {
+                    if (user.password === password) {
                         passwordValid = true;
                         user.password = await bcrypt.hash(password, 10);
                     }
@@ -169,7 +170,7 @@ export default async function handler(req, res) {
 
         // --- B. SECURE ACTIONS ---
         const currentUser = await authenticateUser(req);
-        if (!currentUser) return res.status(401).json({ success: false, message: "Unauthorized" });
+        if (!currentUser) return res.status(401).json({ success: false, message: "Unauthorized Session" });
         const userId = currentUser.id;
 
         switch (action) {
@@ -180,6 +181,7 @@ export default async function handler(req, res) {
                 const task = await Task.findOne({ id: data.taskId });
                 if (!task) return res.status(404).json({ success: false, message: "Task not found" });
 
+                // Check for duplicate completion today
                 const todayStr = new Date().toISOString().split('T')[0];
                 const existingTx = await Transaction.findOne({
                     userId, 
@@ -188,22 +190,30 @@ export default async function handler(req, res) {
                     date: { $regex: `^${todayStr}` }
                 });
 
-                if (existingTx) return res.status(400).json({ success: false, message: "Already completed today" });
+                if (existingTx) return res.status(400).json({ success: false, message: "You already earned from this task today." });
 
-                // ATOMIC UPDATES (Replaces transactions for standard MongoDB compatibility)
-                await User.updateOne({ id: userId }, { $inc: { balance: task.reward } });
+                // 1. Update User Balance
+                const updatedUser = await User.findOneAndUpdate(
+                    { id: userId },
+                    { $inc: { balance: task.reward } },
+                    { new: true }
+                );
+
+                // 2. Increment Task Counter
                 await Task.updateOne({ id: task.id }, { $inc: { completedCount: 1 } });
+                
+                // 3. Record Transaction
                 await Transaction.create({
                     id: 'tx_' + Date.now(),
                     userId,
                     amount: task.reward,
                     type: 'EARNING',
-                    description: `Completed: ${task.title}`,
+                    description: `Earned from: ${task.title}`,
                     date: new Date().toISOString(),
                     taskId: task.id
                 });
 
-                return res.json({ success: true });
+                return res.json({ success: true, newBalance: updatedUser.balance });
             }
 
             case 'dailyCheckIn': {
@@ -271,7 +281,7 @@ export default async function handler(req, res) {
             default: return res.status(400).json({ message: "Unknown Action" });
         }
     } catch (e) {
-        console.error(e);
+        console.error("API ERROR:", e);
         return res.status(500).json({ success: false, message: e.message || 'Server Error' });
     }
 }
