@@ -203,71 +203,73 @@ export default async function handler(req, res) {
             }
 
             case 'playMiniGame': {
-                const gameType = data.gameType; // spin, scratch, guess, lottery
+                const gameType = data.gameType;
                 const today = new Date().toISOString().split('T')[0];
                 
                 const gamesSetting = await Setting.findById('games');
                 const config = gamesSetting?.data?.[gameType] || { isEnabled: true, dailyLimit: 5, minReward: 1, maxReward: 10 };
                 
-                if (!config.isEnabled) return res.status(400).json({ message: "Game is disabled" });
+                if (!config.isEnabled) return res.status(400).json({ message: "Game disabled" });
 
-                // Check Stats
                 let stats = currentUser.gameStats || {};
                 if (stats.lastPlayedDate !== today) stats = { lastPlayedDate: today, spinCount: 0, scratchCount: 0, guessCount: 0, lotteryCount: 0 };
                 
                 const countKey = `${gameType}Count`;
-                if (stats[countKey] >= config.dailyLimit) return res.status(400).json({ success: false, message: "Daily limit reached", left: 0 });
+                if (stats[countKey] >= config.dailyLimit) return res.status(400).json({ success: false, message: "Limit reached", left: 0 });
 
                 const reward = Math.floor(Math.random() * (config.maxReward - config.minReward + 1)) + config.minReward;
                 stats[countKey]++;
 
-                await User.updateOne({ id: userId }, { $inc: { balance: reward }, $set: { gameStats: stats } });
-                await Transaction.create({ id: 'tx_' + Date.now(), userId, amount: reward, type: 'GAME', description: `Won in ${gameType}`, date: new Date().toISOString() });
+                // Direct Atomic Update for maximal reliability
+                await User.updateOne({ id: userId }, { 
+                    $inc: { balance: reward }, 
+                    $set: { gameStats: stats } 
+                });
+                
+                await Transaction.create({ 
+                    id: 'tx_g_' + Date.now(), 
+                    userId, 
+                    amount: reward, 
+                    type: 'GAME', 
+                    description: `Won in ${gameType}`, 
+                    date: new Date().toISOString() 
+                });
 
-                return res.json({ success: true, reward, message: `You won ${reward} points!`, left: config.dailyLimit - stats[countKey] });
+                return res.json({ success: true, reward, message: `Won ${reward} points!`, left: config.dailyLimit - stats[countKey] });
             }
 
-            // --- FIX: Added saveUser action handler ---
             case 'saveUser':
                 if (currentUser.role !== 'ADMIN' && currentUser.id !== data.user.id) return res.status(403).end();
                 await User.findOneAndUpdate({ id: data.user.id }, data.user);
                 return res.json({ success: true });
 
-            // --- FIX: Added processReferral action handler ---
             case 'processReferral': {
                 const { userId, referrerId } = data;
-                if (userId === referrerId) return res.status(400).json({ message: "Cannot refer yourself" });
-                
+                if (userId === referrerId) return res.status(400).json({ message: "Error" });
                 const user = await User.findOne({ id: userId });
-                if (!user) return res.status(404).json({ message: "User not found" });
-                if (user.referredBy) return res.status(400).json({ message: "Already referred" });
+                if (!user || user.referredBy) return res.status(400).json({ message: "Denied" });
                 
                 const referrer = await User.findOne({ id: referrerId });
-                if (!referrer) return res.status(404).json({ message: "Referrer not found" });
+                if (!referrer) return res.status(404).json({ message: "Not Found" });
 
-                const refBonus = 25; 
-                const userBonus = 10;
-
-                await User.updateOne({ id: userId }, { $set: { referredBy: referrerId }, $inc: { balance: userBonus } });
-                await User.updateOne({ id: referrerId }, { $inc: { balance: refBonus, referralCount: 1, referralEarnings: refBonus } });
+                await User.updateOne({ id: userId }, { $set: { referredBy: referrerId }, $inc: { balance: 10 } });
+                await User.updateOne({ id: referrerId }, { $inc: { balance: 25, referralCount: 1, referralEarnings: 25 } });
                 
-                await Transaction.create({ id: 'tx_' + Date.now() + '_u', userId, amount: userBonus, type: 'REFERRAL', description: 'Referral Bonus', date: new Date().toISOString() });
-                await Transaction.create({ id: 'tx_' + Date.now() + '_r', userId: referrerId, amount: refBonus, type: 'REFERRAL', description: `Referral: ${user.name}`, date: new Date().toISOString() });
+                await Transaction.create({ id: 'tx_ref_' + Date.now() + '_u', userId, amount: 10, type: 'REFERRAL', description: 'Referral Bonus', date: new Date().toISOString() });
+                await Transaction.create({ id: 'tx_ref_' + Date.now() + '_r', userId: referrerId, amount: 25, type: 'REFERRAL', description: `Referral: ${user.name}`, date: new Date().toISOString() });
 
-                return res.json({ success: true, message: "Referral Success!" });
+                return res.json({ success: true, message: "Success!" });
             }
 
-            // --- ADMIN ACTIONS ---
             case 'getAllUsers': 
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();
                 return res.json(await User.find({}).limit(100));
             case 'getAllWithdrawals': 
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();
                 return res.json(await Withdrawal.find({}).sort({date:-1}));
-            // --- FIX: Added createWithdrawal action handler ---
             case 'createWithdrawal':
                 await Withdrawal.create(data.request);
-                await Transaction.create({ id: 'tx_' + Date.now(), userId, amount: data.request.amount, type: 'WITHDRAWAL', description: `Withdrawal Request`, date: new Date().toISOString() });
+                await Transaction.create({ id: 'tx_w_' + Date.now(), userId, amount: data.request.amount, type: 'WITHDRAWAL', description: `Withdrawal Request`, date: new Date().toISOString() });
                 return res.json({ success: true });
             case 'updateWithdrawal':
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();
@@ -287,20 +289,18 @@ export default async function handler(req, res) {
                 await Setting.findOneAndUpdate({ _id: data.key }, { _id: data.key, data: data.payload }, { upsert: true });
                 return res.json({ success: true });
 
-            // --- SHORTS ---
             case 'getShorts': return res.json(await Short.find({}));
             case 'addShort':
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();
-                const videoId = data.url.match(/(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1];
-                if (!videoId) throw new Error("Invalid YouTube URL");
-                await Short.create({ id: 'v_' + Date.now(), youtubeId: videoId, url: data.url, addedAt: new Date().toISOString() });
+                const vId = data.url.match(/(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1];
+                if (!vId) throw new Error("Invalid URL");
+                await Short.create({ id: 'v_' + Date.now(), youtubeId: vId, url: data.url, addedAt: new Date().toISOString() });
                 return res.json({ success: true });
             case 'deleteShort':
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();
                 await Short.deleteOne({ id: data.id });
                 return res.json({ success: true });
 
-            // --- ANNOUNCEMENTS ---
             case 'getAnnouncements': return res.json(await Announcement.find({}).sort({date:-1}));
             case 'addAnnouncement':
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();

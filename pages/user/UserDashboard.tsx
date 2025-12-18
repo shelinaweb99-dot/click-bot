@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { User, Transaction, Announcement } from '../../types';
 import { getCurrentUserId, getUserById, getTransactions, subscribeToChanges, claimDailyReward, getAnnouncements } from '../../services/mockDb';
-import { TrendingUp, Award, Clock, CalendarCheck, Zap, Bell, X, Trophy } from 'lucide-react';
+import { TrendingUp, Award, Clock, CalendarCheck, Zap, Bell, X, Trophy, Settings } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const UserDashboard: React.FC = () => {
@@ -10,7 +10,6 @@ export const UserDashboard: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isClaiming, setIsClaiming] = useState(false);
-  const [dismissedNews, setDismissedNews] = useState<string[]>([]);
   const isMounted = useRef(true);
 
   const fetchData = async () => {
@@ -23,7 +22,7 @@ export const UserDashboard: React.FC = () => {
           
           const txs = await getTransactions(id);
           if (!isMounted.current) return;
-          setTransactions(txs.slice(0, 5));
+          setTransactions(txs.slice(0, 10)); // Show more in recent activity
         }
         const news = await getAnnouncements();
         if (!isMounted.current) return;
@@ -36,7 +35,6 @@ export const UserDashboard: React.FC = () => {
   useEffect(() => {
     isMounted.current = true;
     fetchData();
-    // This listener catches the 'db_change' event fired from TaskRunner
     const unsubscribe = subscribeToChanges(() => {
         if (isMounted.current) fetchData();
     });
@@ -69,80 +67,46 @@ export const UserDashboard: React.FC = () => {
       return today === last;
   };
 
-  const dismissNews = (id: string) => {
-      setDismissedNews([...dismissedNews, id]);
-  };
-
   if (!user) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-900">
+    <div className="min-h-screen flex items-center justify-center bg-[#0f172a]">
         <div className="text-center">
             <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-400">Loading Balance...</p>
+            <p className="text-gray-400">Syncing with server...</p>
         </div>
     </div>
   );
 
-  const activeNews = announcements.filter(a => !dismissedNews.includes(a.id));
-
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6 animate-in fade-in duration-500 bg-[#0f172a] min-h-screen">
       
-      {/* Announcements */}
-      {activeNews.length > 0 && (
-          <div className="space-y-3">
-              {activeNews.slice(0, 2).map(news => (
-                  <div key={news.id} className={`p-4 rounded-xl border relative ${
-                      news.type === 'SUCCESS' ? 'bg-green-600/10 border-green-600/30' :
-                      news.type === 'WARNING' ? 'bg-orange-600/10 border-orange-600/30' :
-                      'bg-blue-600/10 border-blue-600/30'
-                  }`}>
-                      <button onClick={() => dismissNews(news.id)} className="absolute top-2 right-2 text-gray-400 hover:text-white">
-                          <X size={16} />
-                      </button>
-                      <div className="flex gap-3">
-                          <Bell size={20} className={
-                              news.type === 'SUCCESS' ? 'text-green-500' :
-                              news.type === 'WARNING' ? 'text-orange-500' : 'text-blue-500'
-                          } />
-                          <div>
-                              <h3 className="text-white font-bold text-sm">{news.title}</h3>
-                              <p className="text-gray-300 text-xs mt-1">{news.message}</p>
-                          </div>
-                      </div>
-                  </div>
-              ))}
-          </div>
-      )}
-
-      {/* Balance Card */}
-      <div className="bg-gradient-to-br from-blue-600 to-indigo-800 rounded-2xl p-6 shadow-xl text-white relative overflow-hidden">
-        <div className="absolute top-0 right-0 -mr-8 -mt-8 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+      {/* Balance Card - Matched to Screenshot */}
+      <div className="bg-gradient-to-r from-[#38bdf8] to-[#2563eb] rounded-[2rem] p-8 shadow-2xl text-white relative overflow-hidden">
         <div className="relative z-10">
-            <h2 className="text-xs font-bold uppercase tracking-wider opacity-70">Available Points</h2>
+            <h2 className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80">Available Points</h2>
             <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-5xl font-black">{user.balance.toFixed(0)}</span>
-                <span className="text-sm font-bold opacity-80">USDT-Pts</span>
+                <span className="text-6xl font-black tracking-tighter">{user.balance.toFixed(0)}</span>
+                <span className="text-sm font-bold opacity-90">USDT-Pts</span>
             </div>
-            <div className="mt-6 flex gap-2">
-                <Link to="/tasks" className="flex-1 bg-white/20 hover:bg-white/30 text-center py-2.5 rounded-xl backdrop-blur-md transition font-bold text-sm">
+            <div className="mt-8 flex gap-3">
+                <Link to="/tasks" className="flex-1 bg-white/20 hover:bg-white/30 text-center py-3.5 rounded-2xl backdrop-blur-md transition font-black text-sm uppercase tracking-wider">
                     Earn More
                 </Link>
-                <Link to="/wallet" className="flex-1 bg-white text-blue-700 font-black text-center py-2.5 rounded-xl hover:bg-gray-100 transition text-sm">
+                <Link to="/wallet" className="flex-1 bg-white text-blue-600 font-black text-center py-3.5 rounded-2xl hover:bg-gray-100 transition text-sm uppercase tracking-wider shadow-lg">
                     Withdraw
                 </Link>
             </div>
         </div>
       </div>
 
-      {/* Daily Reward */}
-      <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700 flex justify-between items-center shadow-lg">
+      {/* Daily Reward - Matched to Screenshot */}
+      <div className="bg-[#1e293b] rounded-3xl p-6 border border-[#334155] flex justify-between items-center shadow-lg">
           <div className="flex items-center gap-4">
-              <div className="bg-green-500/20 p-3 rounded-xl">
-                  <CalendarCheck className="text-green-400" size={24} />
+              <div className="bg-[#22c55e26] p-4 rounded-2xl">
+                  <CalendarCheck className="text-[#22c55e]" size={28} />
               </div>
               <div>
-                  <h3 className="text-white font-bold">Daily Reward</h3>
-                  <p className="text-gray-400 text-xs">
+                  <h3 className="text-white font-bold text-lg">Daily Reward</h3>
+                  <p className="text-gray-400 text-sm">
                       Streak: <span className="text-orange-400 font-bold">{user.dailyStreak || 0} Days</span>
                   </p>
               </div>
@@ -150,62 +114,60 @@ export const UserDashboard: React.FC = () => {
           <button 
             onClick={handleDailyCheckIn}
             disabled={isCheckedInToday() || isClaiming}
-            className={`px-5 py-2.5 rounded-xl text-sm font-black transition-all ${
+            className={`px-6 py-3 rounded-2xl text-sm font-black transition-all ${
                 isCheckedInToday() 
-                ? 'bg-gray-700 text-gray-500 cursor-not-allowed' 
-                : 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-900/20 scale-105 active:scale-95'
+                ? 'bg-[#334155] text-gray-400 cursor-not-allowed' 
+                : 'bg-green-600 hover:bg-green-700 text-white shadow-xl shadow-green-900/20 active:scale-95'
             }`}
           >
              {isCheckedInToday() ? 'Claimed' : 'Claim Now'}
           </button>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-gray-800 p-5 rounded-2xl border border-gray-700 shadow-lg">
-            <div className="flex justify-between items-start mb-3">
-                <div className="bg-blue-500/20 p-2 rounded-lg">
-                    <TrendingUp className="text-blue-500" size={20} />
-                </div>
-                <Trophy size={16} className="text-yellow-500" />
+      {/* Stats Grid - Matched to Screenshot */}
+      <div className="grid grid-cols-2 gap-5">
+        <div className="bg-[#1e293b] p-6 rounded-3xl border border-[#334155] shadow-lg relative">
+            <div className="bg-blue-500/10 p-2.5 rounded-xl w-fit mb-4">
+                <TrendingUp className="text-blue-500" size={24} />
             </div>
-            <p className="text-gray-400 text-xs font-bold uppercase tracking-tighter">Total Earned</p>
-            <p className="text-white font-black text-xl mt-1">
-                {transactions.filter(t => t.type !== 'WITHDRAWAL').reduce((acc, curr) => acc + curr.amount, 0)}
+            <Trophy size={18} className="text-yellow-500 absolute top-6 right-6" />
+            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Total Earned</p>
+            <p className="text-white font-black text-3xl mt-1">
+                {(transactions.filter(t => t.type !== 'WITHDRAWAL').reduce((acc, curr) => acc + curr.amount, 0) + user.balance).toFixed(0)}
             </p>
         </div>
-        <div className="bg-gray-800 p-5 rounded-2xl border border-gray-700 shadow-lg">
-            <div className="bg-orange-500/20 p-2 rounded-lg mb-3 w-fit">
-                <Award className="text-orange-500" size={20} />
+        <div className="bg-[#1e293b] p-6 rounded-3xl border border-[#334155] shadow-lg">
+            <div className="bg-orange-500/10 p-2.5 rounded-xl w-fit mb-4">
+                <Award className="text-orange-500" size={24} />
             </div>
-            <p className="text-gray-400 text-xs font-bold uppercase tracking-tighter">Tasks Done</p>
-            <p className="text-white font-black text-xl mt-1">
+            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Tasks Done</p>
+            <p className="text-white font-black text-3xl mt-1">
                 {transactions.filter(t => t.type === 'EARNING').length}
             </p>
         </div>
       </div>
 
-      {/* Recent History */}
-      <div className="bg-gray-800 rounded-2xl p-5 border border-gray-700 shadow-lg">
-        <div className="flex justify-between items-center mb-5">
-            <h3 className="text-white font-bold flex items-center gap-2">
-                <Clock size={18} className="text-blue-400" /> Recent Activity
+      {/* Recent Activity - Matched to Screenshot */}
+      <div className="bg-[#1e293b] rounded-3xl p-6 border border-[#334155] shadow-xl">
+        <div className="flex justify-between items-center mb-6">
+            <h3 className="text-white font-black text-sm uppercase tracking-widest flex items-center gap-3">
+                <Clock size={20} className="text-blue-400" /> Recent Activity
             </h3>
             <Link to="/wallet" className="text-blue-400 text-xs font-bold hover:underline">See All</Link>
         </div>
-        <div className="space-y-4">
+        <div className="space-y-6">
             {transactions.length === 0 ? (
-                <div className="text-center py-6">
-                    <p className="text-gray-600 text-sm">No activity records found.</p>
+                <div className="text-center py-10">
+                    <p className="text-gray-500 text-sm">No activity records yet.</p>
                 </div>
             ) : (
                 transactions.map(tx => (
-                    <div key={tx.id} className="flex justify-between items-center border-b border-gray-700/50 pb-3 last:border-0 last:pb-0">
+                    <div key={tx.id} className="flex justify-between items-center group">
                         <div className="min-w-0 pr-4">
-                            <p className="text-white text-sm font-bold truncate">{tx.description}</p>
-                            <p className="text-gray-500 text-[10px] mt-0.5">{new Date(tx.date).toLocaleString()}</p>
+                            <p className="text-white text-[15px] font-bold truncate group-hover:text-blue-300 transition-colors capitalize">{tx.description}</p>
+                            <p className="text-gray-500 text-[11px] mt-1">{new Date(tx.date).toLocaleString()}</p>
                         </div>
-                        <span className={`font-black text-sm whitespace-nowrap ${tx.type === 'WITHDRAWAL' ? 'text-red-400' : 'text-green-400'}`}>
+                        <span className={`font-black text-lg whitespace-nowrap ${tx.type === 'WITHDRAWAL' ? 'text-red-400' : 'text-green-400'}`}>
                             {tx.type === 'WITHDRAWAL' ? '-' : '+'}{tx.amount}
                         </span>
                     </div>
