@@ -195,7 +195,9 @@ export default async function handler(req, res) {
                 if (currentUser.lastDailyCheckIn && currentUser.lastDailyCheckIn.split('T')[0] === today) return res.status(400).json({ message: "Already claimed" });
                 
                 const sys = await Setting.findById('system');
-                const amount = (sys?.data?.dailyRewardBase || 10) + (Math.min(currentUser.dailyStreak || 0, 7) * (sys?.data?.dailyRewardStreakBonus || 2));
+                const baseReward = sys?.data?.dailyRewardBase || 10;
+                const streakBonus = sys?.data?.dailyRewardStreakBonus || 2;
+                const amount = baseReward + (Math.min(currentUser.dailyStreak || 0, 7) * streakBonus);
                 
                 await User.updateOne({ id: userId }, { $inc: { balance: amount }, $set: { lastDailyCheckIn: new Date().toISOString(), dailyStreak: (currentUser.dailyStreak || 0) + 1 } });
                 await Transaction.create({ id: 'tx_' + Date.now(), userId, amount, type: 'BONUS', description: 'Daily Check-in', date: new Date().toISOString() });
@@ -207,7 +209,7 @@ export default async function handler(req, res) {
                 const today = new Date().toISOString().split('T')[0];
                 
                 const gamesSetting = await Setting.findById('games');
-                const config = gamesSetting?.data?.[gameType] || { isEnabled: true, dailyLimit: 5, minReward: 1, maxReward: 10 };
+                const config = gamesSetting?.data?.[gameType] || { isEnabled: true, dailyLimit: 10, minReward: 1, maxReward: 10 };
                 
                 if (!config.isEnabled) return res.status(400).json({ message: "Game disabled" });
 
@@ -220,7 +222,7 @@ export default async function handler(req, res) {
                 const reward = Math.floor(Math.random() * (config.maxReward - config.minReward + 1)) + config.minReward;
                 stats[countKey]++;
 
-                // Direct Atomic Update for maximal reliability
+                // Robust atomic update
                 await User.updateOne({ id: userId }, { 
                     $inc: { balance: reward }, 
                     $set: { gameStats: stats } 
@@ -269,6 +271,7 @@ export default async function handler(req, res) {
                 return res.json(await Withdrawal.find({}).sort({date:-1}));
             case 'createWithdrawal':
                 await Withdrawal.create(data.request);
+                await User.updateOne({ id: userId }, { $inc: { balance: -data.request.amount } });
                 await Transaction.create({ id: 'tx_w_' + Date.now(), userId, amount: data.request.amount, type: 'WITHDRAWAL', description: `Withdrawal Request`, date: new Date().toISOString() });
                 return res.json({ success: true });
             case 'updateWithdrawal':

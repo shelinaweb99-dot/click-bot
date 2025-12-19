@@ -2,33 +2,44 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { User, Transaction, Announcement } from '../../types';
 import { getCurrentUserId, getUserById, getTransactions, subscribeToChanges, claimDailyReward, getAnnouncements } from '../../services/mockDb';
-import { TrendingUp, Award, Clock, CalendarCheck, Zap, Bell, X, Trophy, Settings } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { TrendingUp, Award, Clock, CalendarCheck, Trophy, Settings, Loader2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 
 export const UserDashboard: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isClaiming, setIsClaiming] = useState(false);
+  const [loading, setLoading] = useState(true);
   const isMounted = useRef(true);
+  const navigate = useNavigate();
 
   const fetchData = async () => {
     try {
         const id = getCurrentUserId();
-        if (id) {
-          const u = await getUserById(id);
-          if (!isMounted.current) return;
-          setUser(u);
-          
-          const txs = await getTransactions(id);
-          if (!isMounted.current) return;
-          setTransactions(txs.slice(0, 10)); // Show more in recent activity
+        if (!id) {
+            navigate('/login');
+            return;
         }
-        const news = await getAnnouncements();
+
+        const u = await getUserById(id);
         if (!isMounted.current) return;
-        setAnnouncements(news);
+        
+        if (!u) {
+            // Handle cases where session exists but user is deleted/not found in DB
+            localStorage.clear();
+            navigate('/login');
+            return;
+        }
+
+        setUser(u);
+        const txs = await getTransactions(id);
+        if (isMounted.current) {
+            setTransactions(txs.slice(0, 15));
+            setLoading(false);
+        }
     } catch (e) {
         console.error("Dashboard fetch error", e);
+        if (isMounted.current) setLoading(false);
     }
   };
 
@@ -50,8 +61,8 @@ export const UserDashboard: React.FC = () => {
     try {
         const result = await claimDailyReward(user.id);
         if (isMounted.current) {
-             alert(result.reward ? `Claimed ${result.reward} points!` : result.message);
-             await fetchData();
+             // Use a more subtle feedback if possible, but alert works for confirmation
+             if (result.success) fetchData();
         }
     } catch (e: any) {
         alert(e.message || "Failed to check in.");
@@ -67,107 +78,105 @@ export const UserDashboard: React.FC = () => {
       return today === last;
   };
 
-  if (!user) return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0f172a]">
-        <div className="text-center">
-            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-400">Syncing with server...</p>
-        </div>
+  if (loading || !user) return (
+    <div className="min-h-[80vh] flex flex-col items-center justify-center text-white space-y-4">
+        <Loader2 className="animate-spin text-blue-500" size={40} />
+        <p className="text-gray-400 font-medium animate-pulse">Syncing balance...</p>
     </div>
   );
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 bg-[#0f172a] min-h-screen">
+    <div className="space-y-5 animate-in fade-in duration-500 pb-10">
       
-      {/* Balance Card - Matched to Screenshot */}
-      <div className="bg-gradient-to-r from-[#38bdf8] to-[#2563eb] rounded-[2rem] p-8 shadow-2xl text-white relative overflow-hidden">
-        <div className="relative z-10">
-            <h2 className="text-[10px] font-black uppercase tracking-[0.2em] opacity-80">Available Points</h2>
-            <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-6xl font-black tracking-tighter">{user.balance.toFixed(0)}</span>
-                <span className="text-sm font-bold opacity-90">USDT-Pts</span>
-            </div>
-            <div className="mt-8 flex gap-3">
-                <Link to="/tasks" className="flex-1 bg-white/20 hover:bg-white/30 text-center py-3.5 rounded-2xl backdrop-blur-md transition font-black text-sm uppercase tracking-wider">
-                    Earn More
-                </Link>
-                <Link to="/wallet" className="flex-1 bg-white text-blue-600 font-black text-center py-3.5 rounded-2xl hover:bg-gray-100 transition text-sm uppercase tracking-wider shadow-lg">
-                    Withdraw
-                </Link>
-            </div>
+      {/* 1. Main Balance Card (Blue Gradient) - Rounded 2rem */}
+      <div className="bg-gradient-to-r from-[#31b5f6] to-[#1e59e5] rounded-[2rem] p-7 shadow-xl text-white">
+        <h2 className="text-[11px] font-bold uppercase tracking-[0.1em] text-white/80">Available Points</h2>
+        <div className="flex items-baseline gap-2 mt-1">
+            <span className="text-5xl font-black tracking-tight">{user.balance.toFixed(0)}</span>
+            <span className="text-sm font-bold opacity-90">USDT-Pts</span>
+        </div>
+        <div className="mt-7 flex gap-3">
+            <Link to="/tasks" className="flex-1 bg-white/20 hover:bg-white/30 text-center py-3 rounded-2xl backdrop-blur-sm transition font-bold text-sm">
+                Earn More
+            </Link>
+            <Link to="/wallet" className="flex-1 bg-white text-[#1e59e5] font-bold text-center py-3 rounded-2xl hover:bg-gray-100 transition text-sm shadow-md">
+                Withdraw
+            </Link>
         </div>
       </div>
 
-      {/* Daily Reward - Matched to Screenshot */}
-      <div className="bg-[#1e293b] rounded-3xl p-6 border border-[#334155] flex justify-between items-center shadow-lg">
-          <div className="flex items-center gap-4">
-              <div className="bg-[#22c55e26] p-4 rounded-2xl">
-                  <CalendarCheck className="text-[#22c55e]" size={28} />
+      {/* 2. Daily Reward Section - Matched to Screenshot */}
+      <div className="bg-[#1e293b] rounded-[1.8rem] p-4 flex justify-between items-center shadow-lg border border-white/5">
+          <div className="flex items-center gap-3">
+              <div className="bg-green-500/10 p-3.5 rounded-[1.2rem]">
+                  <CalendarCheck className="text-green-500" size={26} />
               </div>
               <div>
-                  <h3 className="text-white font-bold text-lg">Daily Reward</h3>
-                  <p className="text-gray-400 text-sm">
-                      Streak: <span className="text-orange-400 font-bold">{user.dailyStreak || 0} Days</span>
+                  <h3 className="text-white font-bold text-md">Daily Reward</h3>
+                  <p className="text-gray-400 text-xs">
+                      Streak: <span className="text-orange-400 font-bold">{user.dailyStreak || 1} Days</span>
                   </p>
               </div>
           </div>
           <button 
             onClick={handleDailyCheckIn}
             disabled={isCheckedInToday() || isClaiming}
-            className={`px-6 py-3 rounded-2xl text-sm font-black transition-all ${
+            className={`px-6 py-2.5 rounded-2xl text-xs font-bold transition-all ${
                 isCheckedInToday() 
-                ? 'bg-[#334155] text-gray-400 cursor-not-allowed' 
-                : 'bg-green-600 hover:bg-green-700 text-white shadow-xl shadow-green-900/20 active:scale-95'
+                ? 'bg-gray-700/50 text-gray-500' 
+                : 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-900/20 active:scale-95'
             }`}
           >
              {isCheckedInToday() ? 'Claimed' : 'Claim Now'}
           </button>
       </div>
 
-      {/* Stats Grid - Matched to Screenshot */}
-      <div className="grid grid-cols-2 gap-5">
-        <div className="bg-[#1e293b] p-6 rounded-3xl border border-[#334155] shadow-lg relative">
-            <div className="bg-blue-500/10 p-2.5 rounded-xl w-fit mb-4">
-                <TrendingUp className="text-blue-500" size={24} />
+      {/* 3. Stats Grid (Two column) */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-[#1e293b] p-5 rounded-[1.8rem] shadow-lg border border-white/5 relative overflow-hidden">
+            <div className="bg-blue-500/10 p-2.5 rounded-xl w-fit mb-3">
+                <TrendingUp className="text-blue-500" size={22} />
             </div>
-            <Trophy size={18} className="text-yellow-500 absolute top-6 right-6" />
-            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Total Earned</p>
-            <p className="text-white font-black text-3xl mt-1">
-                {(transactions.filter(t => t.type !== 'WITHDRAWAL').reduce((acc, curr) => acc + curr.amount, 0) + user.balance).toFixed(0)}
+            <Trophy size={14} className="text-yellow-500 absolute top-5 right-5 opacity-40" />
+            <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Total Earned</p>
+            <p className="text-white font-black text-2xl mt-0.5">
+                {user.balance.toFixed(0)}
             </p>
         </div>
-        <div className="bg-[#1e293b] p-6 rounded-3xl border border-[#334155] shadow-lg">
-            <div className="bg-orange-500/10 p-2.5 rounded-xl w-fit mb-4">
-                <Award className="text-orange-500" size={24} />
+        <div className="bg-[#1e293b] p-5 rounded-[1.8rem] shadow-lg border border-white/5">
+            <div className="bg-orange-500/10 p-2.5 rounded-xl w-fit mb-3">
+                <Award className="text-orange-500" size={22} />
             </div>
-            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Tasks Done</p>
-            <p className="text-white font-black text-3xl mt-1">
+            <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Tasks Done</p>
+            <p className="text-white font-black text-2xl mt-0.5">
                 {transactions.filter(t => t.type === 'EARNING').length}
             </p>
         </div>
       </div>
 
-      {/* Recent Activity - Matched to Screenshot */}
-      <div className="bg-[#1e293b] rounded-3xl p-6 border border-[#334155] shadow-xl">
-        <div className="flex justify-between items-center mb-6">
-            <h3 className="text-white font-black text-sm uppercase tracking-widest flex items-center gap-3">
-                <Clock size={20} className="text-blue-400" /> Recent Activity
+      {/* 4. Recent Activity Section */}
+      <div className="bg-[#1e293b] rounded-[1.8rem] p-5 shadow-xl border border-white/5">
+        <div className="flex justify-between items-center mb-5">
+            <h3 className="text-white font-bold text-sm uppercase tracking-wide flex items-center gap-2">
+                <Clock size={16} className="text-blue-400" /> Recent Activity
             </h3>
-            <Link to="/wallet" className="text-blue-400 text-xs font-bold hover:underline">See All</Link>
+            <Link to="/wallet" className="text-blue-400 text-xs font-bold">See All</Link>
         </div>
-        <div className="space-y-6">
+        <div className="space-y-5">
             {transactions.length === 0 ? (
-                <div className="text-center py-10">
-                    <p className="text-gray-500 text-sm">No activity records yet.</p>
+                <div className="text-center py-6">
+                    <p className="text-gray-500 text-sm">Start tasks to see history</p>
                 </div>
             ) : (
                 transactions.map(tx => (
-                    <div key={tx.id} className="flex justify-between items-center group">
+                    <div key={tx.id} className="flex justify-between items-center">
                         <div className="min-w-0 pr-4">
-                            <p className="text-white text-[15px] font-bold truncate group-hover:text-blue-300 transition-colors capitalize">{tx.description}</p>
-                            <p className="text-gray-500 text-[11px] mt-1">{new Date(tx.date).toLocaleString()}</p>
+                            <p className="text-white text-[14px] font-bold truncate capitalize">{tx.description}</p>
+                            <p className="text-gray-500 text-[10px] mt-0.5">
+                                {new Date(tx.date).toLocaleDateString()} {new Date(tx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
                         </div>
-                        <span className={`font-black text-lg whitespace-nowrap ${tx.type === 'WITHDRAWAL' ? 'text-red-400' : 'text-green-400'}`}>
+                        <span className={`font-black text-sm whitespace-nowrap ${tx.type === 'WITHDRAWAL' ? 'text-red-400' : 'text-green-400'}`}>
                             {tx.type === 'WITHDRAWAL' ? '-' : '+'}{tx.amount}
                         </span>
                     </div>
