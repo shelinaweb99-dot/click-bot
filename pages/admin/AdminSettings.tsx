@@ -1,15 +1,17 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getPaymentMethods, savePaymentMethod, deletePaymentMethod, getAdSettings, saveAdSettings, getSystemSettings, saveSystemSettings } from '../../services/mockDb';
 import { WithdrawalMethod, AdSettings, AdProvider, SystemSettings, AdLink, RotationMode, AdRotationConfig } from '../../types';
-import { Plus, Trash2, Save, MonitorPlay, HelpCircle, Bot, AlertTriangle, MessageCircle, Lock, PlayCircle, Maximize2, Gift, Code, Youtube, Info, Link as LinkIcon, RefreshCcw, ToggleLeft, ToggleRight, List, DollarSign } from 'lucide-react';
+import { Plus, Trash2, Save, MonitorPlay, Bot, AlertTriangle, Lock, Code, Info, Link as LinkIcon, RefreshCcw, ToggleLeft, ToggleRight, List, DollarSign, Loader2 } from 'lucide-react';
 
 export const AdminSettings: React.FC = () => {
   const [methods, setMethods] = useState<WithdrawalMethod[]>([]);
   const [newMethodName, setNewMethodName] = useState('');
   const [newMethodLabel, setNewMethodLabel] = useState('');
+  const [loading, setLoading] = useState(true);
+  const isMounted = useRef(true);
 
-  const [adSettings, setAdSettings] = useState<AdSettings>({
+  const defaultAdSettings: AdSettings = {
     activeProvider: AdProvider.TELEGRAM_ADS,
     monetagDirectLink: '',
     monetagInterstitialUrl: '',
@@ -27,22 +29,13 @@ export const AdminSettings: React.FC = () => {
         currentLinkIndex: 0,
         links: []
     }
-  });
+  };
 
-  const [rotationConfig, setRotationConfig] = useState<AdRotationConfig>({
-      isEnabled: false,
-      mode: 'SERIAL',
-      intervalMinutes: 10,
-      lastRotationTime: 0,
-      currentLinkIndex: 0,
-      links: []
-  });
+  const [adSettings, setAdSettings] = useState<AdSettings>(defaultAdSettings);
 
-  // Rotation Link Input State
-  const [newLinkUrl, setNewLinkUrl] = useState('');
-  const [newLinkProvider, setNewLinkProvider] = useState<'ADSTERRA' | 'MONETAG'>('ADSTERRA');
+  const [rotationConfig, setRotationConfig] = useState<AdRotationConfig>(defaultAdSettings.rotation!);
 
-  const [systemSettings, setSystemSettings] = useState<SystemSettings>({
+  const defaultSystemSettings: SystemSettings = {
       telegramBotToken: '',
       supportLink: '',
       requiredChannelId: '',
@@ -51,24 +44,49 @@ export const AdminSettings: React.FC = () => {
       dailyRewardBase: 10,
       dailyRewardStreakBonus: 2,
       pointsPerDollar: 1000
-  });
+  };
+
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>(defaultSystemSettings);
 
   const [saveStatus, setSaveStatus] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const loadData = async () => {
     try {
-        const [m, a, s] = await Promise.all([getPaymentMethods(), getAdSettings(), getSystemSettings()]);
-        setMethods(m);
-        setAdSettings(a);
-        if (a.rotation) setRotationConfig(a.rotation);
-        setSystemSettings(s);
+        if (isMounted.current) setLoading(true);
+        const [m, a, s] = await Promise.all([
+            getPaymentMethods(), 
+            getAdSettings(), 
+            getSystemSettings()
+        ]);
+        
+        if (!isMounted.current) return;
+
+        setMethods(Array.isArray(m) ? m : []);
+        
+        // Robust Merging to prevent undefined property crashes (like .includes or .length)
+        const mergedAds = { ...defaultAdSettings, ...a };
+        setAdSettings(mergedAds);
+        
+        if (mergedAds.rotation) {
+            setRotationConfig({ ...defaultAdSettings.rotation!, ...mergedAds.rotation });
+        }
+        
+        setSystemSettings({ ...defaultSystemSettings, ...s });
+        
     } catch (e) {
         console.error("Failed to load settings", e);
+    } finally {
+        if (isMounted.current) setLoading(false);
     }
   };
 
   useEffect(() => {
+    isMounted.current = true;
     loadData();
+    return () => {
+        isMounted.current = false;
+    };
   }, []);
 
   const handleAddMethod = async (e: React.FormEvent) => {
@@ -94,220 +112,248 @@ export const AdminSettings: React.FC = () => {
     }
   };
 
-  const toggleMethod = async (method: WithdrawalMethod) => {
-    try { await savePaymentMethod({ ...method, isEnabled: !method.isEnabled }); await loadData(); } catch (e) { console.error(e); }
-  };
-
   const handleAddRotationLink = () => {
-      if (!newLinkUrl) return;
+      const newUrl = prompt("Enter Direct Link URL:");
+      if (!newUrl) return;
+      const provider = confirm("Is this an Adsterra link? (Cancel for Monetag)") ? 'ADSTERRA' : 'MONETAG';
+      
       const newLink: AdLink = {
           id: Date.now().toString(),
-          url: newLinkUrl,
-          provider: newLinkProvider,
+          url: newUrl,
+          provider: provider as any,
           isEnabled: true
       };
-      setRotationConfig({
-          ...rotationConfig,
-          links: [...rotationConfig.links, newLink]
-      });
-      setNewLinkUrl('');
+      setRotationConfig(prev => ({
+          ...prev,
+          links: [...(prev.links || []), newLink]
+      }));
   };
 
   const handleDeleteRotationLink = (id: string) => {
-      setRotationConfig({
-          ...rotationConfig,
-          links: rotationConfig.links.filter(l => l.id !== id)
-      });
+      setRotationConfig(prev => ({
+          ...prev,
+          links: (prev.links || []).filter(l => l.id !== id)
+      }));
   };
 
   const toggleRotationLink = (id: string) => {
-      setRotationConfig({
-          ...rotationConfig,
-          links: rotationConfig.links.map(l => l.id === id ? { ...l, isEnabled: !l.isEnabled } : l)
-      });
+      setRotationConfig(prev => ({
+          ...prev,
+          links: (prev.links || []).map(l => l.id === id ? { ...l, isEnabled: !l.isEnabled } : l)
+      }));
   };
 
   const handleSettingsSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (systemSettings.telegramBotToken.includes(' ')) { alert("Bot Token should not contain spaces."); return; }
+    const token = systemSettings.telegramBotToken || '';
+    if (token.includes(' ')) { 
+        alert("Bot Token should not contain spaces."); 
+        return; 
+    }
+    
+    setIsSaving(true);
     try {
         const mergedAdSettings = { ...adSettings, rotation: rotationConfig };
         await Promise.all([
             saveAdSettings(mergedAdSettings),
             saveSystemSettings(systemSettings)
         ]);
-        setSaveStatus('All settings saved successfully!');
+        setSaveStatus('Settings Sync Successful');
         setTimeout(() => setSaveStatus(''), 3000);
-    } catch (e) { setSaveStatus('Error saving settings!'); console.error(e); }
+    } catch (e) { 
+        setSaveStatus('Sync Failed'); 
+        console.error(e); 
+    } finally {
+        if (isMounted.current) setIsSaving(false);
+    }
   };
 
-  return (
-    <div className="space-y-8 pb-10">
-      <h1 className="text-2xl font-bold text-white">System Settings</h1>
+  if (loading) return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
+          <Loader2 className="animate-spin text-blue-500" size={40} />
+          <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Configuring Core Protocols</p>
+      </div>
+  );
 
-      {saveStatus && (
-          <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-xl font-bold animate-bounce ${saveStatus.includes('Error') ? 'bg-red-500' : 'bg-green-500'} text-white`}>
-              {saveStatus}
+  return (
+    <div className="space-y-8 pb-12 animate-in fade-in duration-500">
+      <div className="flex justify-between items-end">
+          <div>
+            <h1 className="text-4xl font-black text-white tracking-tighter">System</h1>
+            <p className="text-gray-500 font-bold mt-1 uppercase text-[10px] tracking-widest">Infrastructure Control Panel</p>
           </div>
-      )}
+          {saveStatus && (
+              <div className={`px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest animate-bounce ${saveStatus.includes('Failed') ? 'bg-red-500' : 'bg-green-600'} text-white shadow-xl`}>
+                  {saveStatus}
+              </div>
+          )}
+      </div>
 
       <form onSubmit={handleSettingsSave} className="space-y-8">
         
-        {/* --- Financial & Reward Configuration --- */}
-        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 relative overflow-hidden">
-            <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                <DollarSign className="text-green-400" /> Financial & Rewards
+        {/* Financial Configuration */}
+        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
+            <h2 className="text-xl font-black text-white mb-6 flex items-center gap-3 tracking-tight">
+                <DollarSign className="text-green-500" size={24} /> Financial Rules
             </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div>
-                    <label className="block text-gray-400 text-sm mb-1 font-bold">Minimum Withdrawal</label>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                    <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Min Withdrawal (USDT)</label>
                     <input 
                         type="number" 
-                        min="1"
-                        className="w-full bg-gray-900 border border-gray-600 text-white p-3 rounded-lg focus:border-green-500 outline-none"
-                        value={systemSettings.minWithdrawal} 
+                        className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl focus:border-green-500 outline-none transition-all font-mono"
+                        value={systemSettings.minWithdrawal || 0} 
                         onChange={(e) => setSystemSettings({...systemSettings, minWithdrawal: Number(e.target.value)})} 
                     />
                 </div>
-                <div>
-                    <label className="block text-gray-400 text-sm mb-1 font-bold">Daily Check-in Base</label>
+                <div className="space-y-2">
+                    <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Daily Reward Base</label>
                     <input 
                         type="number" 
-                        min="1"
-                        className="w-full bg-gray-900 border border-gray-600 text-white p-3 rounded-lg focus:border-green-500 outline-none"
-                        value={systemSettings.dailyRewardBase} 
+                        className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl focus:border-green-500 outline-none transition-all font-mono"
+                        value={systemSettings.dailyRewardBase || 0} 
                         onChange={(e) => setSystemSettings({...systemSettings, dailyRewardBase: Number(e.target.value)})} 
                     />
                 </div>
-                <div>
-                    <label className="block text-gray-400 text-sm mb-1 font-bold">Streak Bonus (per day)</label>
+                <div className="space-y-2">
+                    <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Exchange Rate (Pts/$)</label>
                     <input 
                         type="number" 
-                        min="0"
-                        className="w-full bg-gray-900 border border-gray-600 text-white p-3 rounded-lg focus:border-green-500 outline-none"
-                        value={systemSettings.dailyRewardStreakBonus} 
-                        onChange={(e) => setSystemSettings({...systemSettings, dailyRewardStreakBonus: Number(e.target.value)})} 
-                    />
-                </div>
-                <div>
-                    <label className="block text-gray-400 text-sm mb-1 font-bold text-yellow-400">Exchange Rate (Points = $1)</label>
-                    <input 
-                        type="number" 
-                        min="1"
-                        className="w-full bg-gray-900 border border-yellow-500/50 text-white p-3 rounded-lg focus:border-yellow-500 outline-none"
-                        value={systemSettings.pointsPerDollar} 
+                        className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl focus:border-blue-500 outline-none transition-all font-mono"
+                        value={systemSettings.pointsPerDollar || 0} 
                         onChange={(e) => setSystemSettings({...systemSettings, pointsPerDollar: Number(e.target.value)})} 
                     />
-                    <p className="text-[10px] text-gray-500 mt-1">Example: 1000 points = $1.00 USD</p>
                 </div>
             </div>
         </div>
 
-        {/* --- System/Bot Configuration --- */}
-        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 relative overflow-hidden">
-            <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                <Bot className="text-blue-400" /> Telegram & API Settings
+        {/* Telegram API Settings */}
+        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
+            <h2 className="text-xl font-black text-white mb-6 flex items-center gap-3 tracking-tight">
+                <Bot className="text-blue-500" size={24} /> Integration Keys
             </h2>
-            <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-700/50 space-y-4">
-                <div>
-                    <label className="block text-gray-400 text-sm mb-1 font-bold">Telegram Bot Token (from @BotFather)</label>
-                    <input type="text" className={`w-full bg-gray-800 border text-white p-3 rounded-lg focus:border-blue-500 outline-none font-mono ${systemSettings.telegramBotToken.includes(' ') ? 'border-red-500' : 'border-gray-600'}`} placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" value={systemSettings.telegramBotToken} onChange={(e) => setSystemSettings({...systemSettings, telegramBotToken: e.target.value.trim()})} />
-                </div>
+            <div className="space-y-2">
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Telegram Bot Token</label>
+                <input 
+                    type="text" 
+                    className={`w-full bg-[#0b1120] border text-white p-4 rounded-2xl focus:border-blue-500 outline-none font-mono text-sm transition-all ${(systemSettings.telegramBotToken || '').includes(' ') ? 'border-red-500' : 'border-white/5'}`}
+                    placeholder="123456789:ABC..." 
+                    value={systemSettings.telegramBotToken || ''} 
+                    onChange={(e) => setSystemSettings({...systemSettings, telegramBotToken: e.target.value.trim()})} 
+                />
             </div>
         </div>
 
-        {/* --- SMART AD ROTATION SYSTEM --- */}
-        <div className="bg-gradient-to-br from-indigo-900/50 to-purple-900/50 p-6 rounded-xl border border-indigo-500/50 relative overflow-hidden shadow-lg">
-            <div className="flex justify-between items-center mb-6">
+        {/* Ad Provider Settings */}
+        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
+            <h2 className="text-xl font-black text-white mb-6 flex items-center gap-3 tracking-tight">
+                <MonitorPlay className="text-indigo-500" size={24} /> Ad Delivery
+            </h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                {Object.values(AdProvider).map((provider) => (
+                    <button 
+                        key={provider} 
+                        type="button"
+                        onClick={() => setAdSettings({...adSettings, activeProvider: provider})}
+                        className={`
+                            p-5 rounded-2xl border transition-all text-xs font-black uppercase tracking-widest
+                            ${adSettings.activeProvider === provider 
+                                ? 'bg-blue-600 text-white border-blue-500 shadow-xl shadow-blue-900/20 scale-105' 
+                                : 'bg-[#0b1120] border-white/5 text-gray-500 hover:text-white hover:bg-white/5'}
+                        `}
+                    >
+                        {provider.replace('_', ' ')}
+                    </button>
+                ))}
+            </div>
+
+            {adSettings.activeProvider === AdProvider.MONETAG && (
+                <div className="space-y-6 animate-in slide-in-from-top-4 duration-300">
+                    <div className="space-y-2">
+                        <label className="text-blue-500 text-[10px] font-black uppercase tracking-widest ml-1">Monetag Zone ID (Vignette)</label>
+                        <input 
+                            type="text" 
+                            className="w-full bg-[#0b1120] border-2 border-blue-500/30 text-white p-4 rounded-2xl focus:border-blue-500 outline-none font-mono shadow-inner" 
+                            placeholder="e.g. 10305424" 
+                            value={adSettings.monetagZoneId || ''} 
+                            onChange={(e) => setAdSettings({...adSettings, monetagZoneId: e.target.value.trim()})} 
+                        />
+                    </div>
+                </div>
+            )}
+        </div>
+
+        {/* Smart Rotation System */}
+        <div className="bg-gradient-to-br from-[#1e293b] to-[#0f172a] p-8 rounded-[2.5rem] border border-indigo-500/20 shadow-2xl relative overflow-hidden">
+            <div className="flex justify-between items-center mb-8">
                  <div>
-                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                        <RefreshCcw className="text-indigo-400" /> Smart Link Rotation
+                    <h2 className="text-xl font-black text-white flex items-center gap-3 tracking-tight">
+                        <RefreshCcw className="text-indigo-400" size={24} /> Ad Rotation
                     </h2>
-                    <p className="text-gray-400 text-sm mt-1">Automatically switch fallback ads every few minutes.</p>
+                    <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mt-1">Fallback Link Management</p>
                  </div>
                  <label className="relative inline-flex items-center cursor-pointer">
                       <input type="checkbox" checked={rotationConfig.isEnabled} onChange={e => setRotationConfig({...rotationConfig, isEnabled: e.target.checked})} className="sr-only peer" />
-                      <div className="w-14 h-7 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-600"></div>
+                      <div className="w-14 h-7 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-600"></div>
                   </label>
             </div>
 
             {rotationConfig.isEnabled && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-top-4">
-                    
-                    {/* Config Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-black/20 p-4 rounded-xl">
-                        <div>
-                            <label className="block text-indigo-300 text-xs font-bold uppercase mb-2">Rotation Mode</label>
-                            <div className="flex gap-2">
-                                <button type="button" onClick={() => setRotationConfig({...rotationConfig, mode: 'SERIAL'})} className={`flex-1 py-2 px-3 rounded-lg text-sm font-bold border transition ${rotationConfig.mode === 'SERIAL' ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-gray-800 border-gray-600 text-gray-400'}`}>
-                                    Serial (1 → 2 → 3)
-                                </button>
-                                <button type="button" onClick={() => setRotationConfig({...rotationConfig, mode: 'RANDOM'})} className={`flex-1 py-2 px-3 rounded-lg text-sm font-bold border transition ${rotationConfig.mode === 'RANDOM' ? 'bg-purple-600 border-purple-500 text-white' : 'bg-gray-800 border-gray-600 text-gray-400'}`}>
-                                    Random Shuffle
-                                </button>
-                            </div>
+                <div className="space-y-6 animate-in slide-in-from-top-4">
+                    <div className="grid grid-cols-2 gap-6 p-6 bg-black/20 rounded-3xl border border-white/5">
+                        <div className="space-y-2">
+                            <label className="text-indigo-400 text-[10px] font-black uppercase tracking-widest ml-1">Mode</label>
+                            <select 
+                                value={rotationConfig.mode} 
+                                onChange={e => setRotationConfig({...rotationConfig, mode: e.target.value as RotationMode})}
+                                className="w-full bg-[#0b1120] text-white p-4 rounded-2xl border border-white/5 outline-none font-bold text-xs uppercase tracking-widest"
+                            >
+                                <option value="SERIAL">Sequential</option>
+                                <option value="RANDOM">Random Shuffle</option>
+                            </select>
                         </div>
-                        <div>
-                            <label className="block text-indigo-300 text-xs font-bold uppercase mb-2">Change Interval (Minutes)</label>
+                        <div className="space-y-2">
+                            <label className="text-indigo-400 text-[10px] font-black uppercase tracking-widest ml-1">Interval (Min)</label>
                             <input 
-                                type="number" min="1" max="1440" 
-                                className="w-full bg-gray-800 border border-gray-600 text-white p-2 rounded-lg font-mono text-center focus:border-indigo-500 outline-none"
-                                value={rotationConfig.intervalMinutes}
-                                onChange={(e) => setRotationConfig({...rotationConfig, intervalMinutes: Math.max(1, parseInt(e.target.value))})}
+                                type="number" 
+                                className="w-full bg-[#0b1120] text-white p-4 rounded-2xl border border-white/5 outline-none font-mono text-center"
+                                value={rotationConfig.intervalMinutes || 10}
+                                onChange={(e) => setRotationConfig({...rotationConfig, intervalMinutes: Math.max(1, parseInt(e.target.value) || 1)})}
                             />
                         </div>
                     </div>
 
-                    {/* Link Manager */}
                     <div className="space-y-4">
-                        <label className="block text-white text-sm font-bold flex items-center gap-2">
-                            <List size={16} /> Manage Direct Links ({rotationConfig.links.length})
-                        </label>
-                        
-                        {/* Add New */}
-                        <div className="flex flex-col md:flex-row gap-2">
-                            <select 
-                                value={newLinkProvider} 
-                                onChange={(e) => setNewLinkProvider(e.target.value as any)}
-                                className="bg-gray-800 text-white p-3 rounded-lg border border-gray-600 outline-none"
-                            >
-                                <option value="ADSTERRA">Adsterra</option>
-                                <option value="MONETAG">Monetag</option>
-                            </select>
-                            <input 
-                                type="url" 
-                                placeholder="Paste Direct Link URL here..." 
-                                className="flex-1 bg-gray-800 text-white p-3 rounded-lg border border-gray-600 outline-none focus:border-indigo-500"
-                                value={newLinkUrl}
-                                onChange={(e) => setNewLinkUrl(e.target.value)}
-                            />
-                            <button type="button" onClick={handleAddRotationLink} className="bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-lg font-bold flex items-center gap-2 justify-center">
-                                <Plus size={18} /> Add
+                        <div className="flex justify-between items-center px-1">
+                            <h3 className="text-white text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                                <List size={14} /> Link Registry ({(rotationConfig.links || []).length})
+                            </h3>
+                            <button type="button" onClick={handleAddRotationLink} className="text-indigo-400 hover:text-white flex items-center gap-1 text-[10px] font-black uppercase tracking-widest transition-colors">
+                                <Plus size={14} /> New Link
                             </button>
                         </div>
 
-                        {/* List */}
-                        <div className="bg-gray-900/50 rounded-xl border border-gray-700 max-h-60 overflow-y-auto custom-scrollbar">
-                            {rotationConfig.links.length === 0 ? (
-                                <div className="p-8 text-center text-gray-500">No links added. Add Adsterra/Monetag links above.</div>
+                        <div className="bg-[#0b1120] rounded-[1.8rem] border border-white/5 overflow-hidden">
+                            {(rotationConfig.links || []).length === 0 ? (
+                                <div className="p-10 text-center text-gray-600 font-bold text-xs italic">No fallback links defined</div>
                             ) : (
-                                rotationConfig.links.map((link, index) => (
-                                    <div key={link.id} className={`flex items-center gap-3 p-3 border-b border-gray-700 last:border-0 ${index === rotationConfig.currentLinkIndex ? 'bg-indigo-900/20' : ''}`}>
-                                        <div className={`text-[10px] font-bold px-2 py-1 rounded w-20 text-center ${link.provider === 'ADSTERRA' ? 'bg-red-900/50 text-red-400' : 'bg-blue-900/50 text-blue-400'}`}>
+                                (rotationConfig.links || []).map((link, idx) => (
+                                    <div key={link.id} className="flex items-center gap-4 p-5 border-b border-white/[0.03] last:border-0 hover:bg-white/[0.01]">
+                                        <div className={`px-2 py-1 rounded-lg text-[8px] font-black uppercase w-16 text-center ${link.provider === 'ADSTERRA' ? 'bg-orange-500/10 text-orange-400' : 'bg-blue-500/10 text-blue-400'}`}>
                                             {link.provider}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <p className={`text-sm truncate ${link.isEnabled ? 'text-gray-300' : 'text-gray-600 line-through'}`}>{link.url}</p>
+                                            <p className={`text-xs font-mono truncate ${link.isEnabled ? 'text-gray-300' : 'text-gray-600 line-through italic'}`}>{link.url}</p>
                                         </div>
-                                        {index === rotationConfig.currentLinkIndex && (
-                                            <span className="text-[10px] bg-green-500/20 text-green-400 px-2 py-0.5 rounded animate-pulse">ACTIVE</span>
-                                        )}
-                                        <button type="button" onClick={() => toggleRotationLink(link.id)} className="text-gray-400 hover:text-white" title="Toggle">
-                                            {link.isEnabled ? <ToggleRight className="text-green-500" /> : <ToggleLeft />}
-                                        </button>
-                                        <button type="button" onClick={() => handleDeleteRotationLink(link.id)} className="text-gray-500 hover:text-red-400">
-                                            <Trash2 size={16} />
-                                        </button>
+                                        <div className="flex items-center gap-4">
+                                            <button type="button" onClick={() => toggleRotationLink(link.id)} className={`transition-colors ${link.isEnabled ? 'text-green-500' : 'text-gray-600'}`}>
+                                                {link.isEnabled ? <ToggleRight size={24} /> : <ToggleLeft size={24} />}
+                                            </button>
+                                            <button type="button" onClick={() => handleDeleteRotationLink(link.id)} className="text-gray-600 hover:text-red-500 transition-colors">
+                                                <Trash2 size={18} />
+                                            </button>
+                                        </div>
                                     </div>
                                 ))
                             )}
@@ -317,67 +363,13 @@ export const AdminSettings: React.FC = () => {
             )}
         </div>
 
-        {/* --- Standard Ad Configuration --- */}
-        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 relative overflow-hidden shadow-lg">
-            <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                <MonitorPlay className="text-blue-500" /> General Ad Controls
-            </h2>
-            
-            <div>
-                <label className="block text-gray-400 text-sm mb-2 font-medium">Select Active Ad Provider</label>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    {Object.values(AdProvider).map((provider) => (
-                        <label 
-                            key={provider} 
-                            className={`
-                                cursor-pointer border rounded-xl p-4 flex flex-col items-center justify-center gap-2 transition-all hover:scale-105
-                                ${adSettings.activeProvider === provider 
-                                    ? 'bg-blue-600/20 border-blue-500 text-white shadow-lg ring-1 ring-blue-500' 
-                                    : 'bg-gray-700 border-gray-600 text-gray-400 hover:bg-gray-600'}
-                            `}
-                        >
-                            <span className="font-bold text-sm tracking-wide">{provider.replace('_', ' ')}</span>
-                            <input 
-                                type="radio" 
-                                name="adProvider" 
-                                className="w-4 h-4 accent-blue-500"
-                                checked={adSettings.activeProvider === provider}
-                                onChange={() => setAdSettings({...adSettings, activeProvider: provider})}
-                            />
-                        </label>
-                    ))}
-                </div>
-
-                {adSettings.activeProvider === AdProvider.MONETAG && (
-                    <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-700/50 animate-in fade-in slide-in-from-top-2 space-y-4">
-                        <div className="bg-blue-900/30 p-4 rounded-lg border border-blue-500/30 mb-2">
-                            <h3 className="text-blue-300 font-bold text-sm flex items-center gap-2 mb-2">
-                                <Info size={16} /> Best Setup for Telegram:
-                            </h3>
-                            <ul className="list-disc list-inside text-xs text-gray-300 space-y-1">
-                                <li><b>Primary:</b> Enter your **Zone ID** (Vignette Banner).</li>
-                                <li><b>Fallback:</b> Enable <b>Smart Link Rotation</b> above for dynamic failover.</li>
-                            </ul>
-                        </div>
-                        <div>
-                            <label className="block text-blue-400 text-xl mb-1 font-bold flex items-center gap-2">
-                                <Code size={20} /> Monetag Zone ID (Vignette)
-                            </label>
-                            <input type="text" className="w-full bg-gray-800 border-2 border-blue-500 text-white p-4 rounded-xl focus:border-blue-400 outline-none font-mono text-lg shadow-lg shadow-blue-900/20" placeholder="e.g. 1234567" value={adSettings.monetagZoneId || ''} onChange={(e) => setAdSettings({...adSettings, monetagZoneId: e.target.value.trim()})} />
-                        </div>
-                        <div>
-                            <label className="block text-green-400 text-sm mb-1 font-bold flex items-center gap-2">
-                                <LinkIcon size={16} /> Static Direct Link (Optional)
-                            </label>
-                            <input type="url" className="w-full bg-gray-800 border border-green-600/50 text-white p-3 rounded-lg focus:border-green-500 outline-none" placeholder="https://gohfy.com/..." value={adSettings.monetagDirectLink || ''} onChange={(e) => setAdSettings({...adSettings, monetagDirectLink: e.target.value})} />
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
-
-        <button type="submit" className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg font-bold flex items-center justify-center gap-2 shadow-lg transition transform hover:scale-105">
-            <Save size={18} /> Save All Settings
+        <button 
+            type="submit" 
+            disabled={isSaving}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 text-white py-6 rounded-[1.8rem] font-black text-xs uppercase tracking-[0.3em] shadow-2xl shadow-blue-900/40 transition-all active:scale-95 flex items-center justify-center gap-3"
+        >
+            {isSaving ? <Loader2 className="animate-spin" size={20} /> : <Save size={20} />}
+            {isSaving ? 'Processing Sync' : 'Apply Security Settings'}
         </button>
       </form>
     </div>
