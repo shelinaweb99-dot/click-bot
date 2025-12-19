@@ -127,32 +127,49 @@ export default async function handler(req, res) {
             case 'dailyCheckIn': {
                 const today = new Date().toISOString().split('T')[0];
                 if (currentUser.lastDailyCheckIn && currentUser.lastDailyCheckIn.split('T')[0] === today) return res.status(400).json({ message: "Already claimed today" });
-                const reward = 10 + (Math.min(currentUser.dailyStreak || 0, 7) * 2);
+                
+                // Fetch dynamic settings from DB
+                const sysDoc = await Setting.findById('system');
+                const sys = sysDoc?.data || {};
+                const baseReward = sys.dailyRewardBase || 10;
+                const bonusPerDay = sys.dailyRewardStreakBonus || 2;
+                
+                const reward = baseReward + (Math.min(currentUser.dailyStreak || 0, 7) * bonusPerDay);
+                
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: reward }, $set: { lastDailyCheckIn: new Date().toISOString(), dailyStreak: (currentUser.dailyStreak || 0) + 1 } });
                 await Transaction.create({ id: 'tx_d_' + Date.now(), userId: currentUser.id, amount: reward, type: 'BONUS', description: 'Daily Reward', date: new Date().toISOString() });
                 return res.json({ success: true, reward });
             }
 
             case 'playMiniGame': {
-                const reward = Math.floor(Math.random() * 10) + 1;
+                const gameType = data.gameType;
+                // Fetch dynamic game settings
+                const gamesDoc = await Setting.findById('games');
+                const games = gamesDoc?.data || {};
+                const config = games[gameType] || { isEnabled: true, minReward: 1, maxReward: 10 };
+                
+                const reward = Math.floor(Math.random() * (config.maxReward - config.minReward + 1)) + config.minReward;
+                
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: reward } });
-                await Transaction.create({ id: 'tx_g_' + Date.now(), userId: currentUser.id, amount: reward, type: 'GAME', description: `Game Win: ${data.gameType}`, date: new Date().toISOString() });
+                await Transaction.create({ id: 'tx_g_' + Date.now(), userId: currentUser.id, amount: reward, type: 'GAME', description: `Game Win: ${gameType}`, date: new Date().toISOString() });
                 return res.json({ success: true, reward, left: 5 });
             }
 
             case 'createWithdrawal': {
                 const amount = Number(data.request.amount);
                 if (currentUser.balance < amount) return res.status(400).json({ message: "Insufficient balance" });
+                
                 await Withdrawal.create(data.request);
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: -amount } });
                 await Transaction.create({ id: 'tx_w_' + Date.now(), userId: currentUser.id, amount, type: 'WITHDRAWAL', description: 'Withdrawal Request', date: new Date().toISOString() });
                 return res.json({ success: true });
             }
 
-            // --- ADMIN ACTIONS (CRITICAL FIX) ---
+            // --- ADMIN ACTIONS (Persistence Fixes) ---
             case 'saveTask':
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();
-                await Task.findOneAndUpdate({ id: data.payload.id }, data.payload, { upsert: true });
+                // Ensure id is used for lookup correctly
+                await Task.findOneAndUpdate({ id: data.payload.id }, { $set: data.payload }, { upsert: true, new: true });
                 return res.json({ success: true });
 
             case 'deleteTask':
@@ -162,7 +179,7 @@ export default async function handler(req, res) {
 
             case 'saveSettings':
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();
-                await Setting.findOneAndUpdate({ _id: data.key }, { _id: data.key, data: data.payload }, { upsert: true });
+                await Setting.findOneAndUpdate({ _id: data.key }, { $set: { _id: data.key, data: data.payload } }, { upsert: true, new: true });
                 return res.json({ success: true });
 
             case 'addShort':
@@ -196,19 +213,19 @@ export default async function handler(req, res) {
 
             case 'updateWithdrawal':
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();
-                await Withdrawal.updateOne({ id: data.id }, { status: data.status });
+                await Withdrawal.updateOne({ id: data.id }, { $set: { status: data.status } });
                 return res.json({ success: true });
 
             case 'saveUser':
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();
-                await User.findOneAndUpdate({ id: data.user.id }, data.user);
+                await User.findOneAndUpdate({ id: data.user.id }, { $set: data.user }, { new: true });
                 return res.json({ success: true });
 
             case 'processReferral': {
                 const referrer = await User.findOne({ id: data.code });
                 if (!referrer || referrer.id === currentUser.id) return res.status(400).json({ message: "Invalid code" });
                 if (currentUser.referredBy) return res.status(400).json({ message: "Already referred" });
-                await User.updateOne({ id: currentUser.id }, { referredBy: referrer.id, $inc: { balance: 10 } });
+                await User.updateOne({ id: currentUser.id }, { $set: { referredBy: referrer.id }, $inc: { balance: 10 } });
                 await User.updateOne({ id: referrer.id }, { $inc: { balance: 25, referralCount: 1, referralEarnings: 25 } });
                 return res.json({ success: true, message: "Bonus claimed!" });
             }
