@@ -292,7 +292,10 @@ export default async function handler(req, res) {
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required" });
                 await Task.findOneAndUpdate({ id: data.payload.id }, data.payload, { upsert: true });
                 return res.json({ success: true });
-            case 'getSettings': return res.json((await Setting.findById(data.key))?.data || {});
+            case 'getSettings': {
+                const setting = await Setting.findById(data.key);
+                return res.json(setting?.data || {});
+            }
             case 'saveSettings':
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required" });
                 await Setting.findOneAndUpdate({ _id: data.key }, { _id: data.key, data: data.payload }, { upsert: true });
