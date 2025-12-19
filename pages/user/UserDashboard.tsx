@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { User, Transaction } from '../../types';
-import { getCurrentUserId, getUserById, getTransactions, subscribeToChanges, claimDailyReward } from '../../services/mockDb';
+import { getCurrentUserId, getUserById, getTransactions, subscribeToChanges, claimDailyReward, triggerHoneypot } from '../../services/mockDb';
 import { TrendingUp, Award, Clock, CalendarCheck, Trophy, Loader2, ChevronRight, ArrowUpRight } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -17,16 +17,9 @@ export const UserDashboard: React.FC = () => {
     try {
         const id = getCurrentUserId();
         if (!id) { navigate('/login'); return; }
-
         const u = await getUserById(id);
         if (!isMounted.current) return;
-        
-        if (!u) {
-            localStorage.clear();
-            navigate('/login');
-            return;
-        }
-
+        if (!u) { navigate('/login'); return; }
         setUser(u);
         const txs = await getTransactions(id);
         if (isMounted.current) {
@@ -34,7 +27,6 @@ export const UserDashboard: React.FC = () => {
             setLoading(false);
         }
     } catch (e) {
-        console.error("Dashboard fetch error", e);
         if (isMounted.current) setLoading(false);
     }
   };
@@ -58,7 +50,7 @@ export const UserDashboard: React.FC = () => {
         const result = await claimDailyReward(user.id);
         if (isMounted.current && result.success) fetchData();
     } catch (e: any) {
-        console.error(e);
+        alert(e.message || "Failed to claim reward.");
     } finally {
         if (isMounted.current) setIsClaiming(false);
     }
@@ -72,122 +64,109 @@ export const UserDashboard: React.FC = () => {
   };
 
   if (loading || !user) return (
-    <div className="min-h-[70vh] flex flex-col items-center justify-center text-white space-y-6">
-        <div className="relative">
-          <div className="w-12 h-12 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
-          <div className="absolute inset-0 bg-blue-500/10 blur-xl animate-pulse"></div>
-        </div>
-        <p className="text-gray-400 font-bold text-xs uppercase tracking-[0.2em]">Authenticating</p>
+    <div className="min-h-[70vh] flex flex-col items-center justify-center space-y-4">
+        <Loader2 className="animate-spin text-blue-500" size={32} />
+        <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Accessing Wallet...</p>
     </div>
   );
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-700 pb-10">
+    <div className="space-y-5 animate-in fade-in duration-700 pb-10 max-w-full overflow-x-hidden">
       
-      {/* Mesh Balance Card - Refined */}
-      <div className="mesh-gradient rounded-[2.5rem] p-8 shadow-[0_20px_40px_rgba(37,99,235,0.25)] text-white relative overflow-hidden group">
-        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-          <TrendingUp size={120} />
+      {/* ANTI-BOT HONEYPOT */}
+      <button onClick={() => triggerHoneypot()} className="opacity-0 absolute pointer-events-auto h-0 w-0 overflow-hidden" aria-hidden="true" tabIndex={-1}>Admin Debug</button>
+
+      {/* Responsive Mesh Balance Card */}
+      <div className="mesh-gradient rounded-[2rem] sm:rounded-[2.5rem] p-6 sm:p-8 shadow-[0_20px_40px_rgba(37,99,235,0.25)] text-white relative overflow-hidden group">
+        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity pointer-events-none">
+          <TrendingUp size={100} className="sm:w-[120px] sm:h-[120px]" />
         </div>
         <div className="relative z-10">
             <div className="flex items-center gap-2 mb-1">
               <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></div>
-              <h2 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/70">Total Assets</h2>
+              <h2 className="text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] text-white/70">Total Assets</h2>
             </div>
-            <div className="flex items-baseline gap-2">
-                <span className="text-6xl font-black tracking-tighter drop-shadow-sm">{user.balance.toFixed(2)}</span>
-                <span className="text-sm font-black opacity-80 italic tracking-widest">USDT</span>
+            <div className="flex items-baseline gap-1.5 sm:gap-2">
+                <span className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter drop-shadow-md">
+                    {user.balance.toFixed(2)}
+                </span>
+                <span className="text-xs sm:text-sm font-black opacity-80 italic tracking-widest">USDT</span>
             </div>
-            <div className="mt-8 flex gap-3">
-                <Link to="/tasks" className="flex-[1.5] bg-white/10 hover:bg-white/20 text-center py-4 rounded-2xl backdrop-blur-md transition-all font-bold text-xs uppercase tracking-widest border border-white/10">
+            <div className="mt-6 sm:mt-8 flex gap-2.5 sm:gap-3">
+                <Link to="/tasks" className="flex-[1.2] sm:flex-[1.5] bg-white/10 hover:bg-white/20 text-center py-3.5 sm:py-4 rounded-xl sm:rounded-2xl backdrop-blur-md transition-all font-bold text-[10px] sm:text-xs uppercase tracking-widest border border-white/10 active:scale-95">
                     Earn More
                 </Link>
-                <Link to="/wallet" className="flex-1 bg-white text-blue-700 font-black text-center py-4 rounded-2xl hover:bg-gray-100 transition-all text-xs uppercase tracking-widest shadow-xl active:scale-95">
+                <Link to="/wallet" className="flex-1 bg-white text-blue-700 font-black text-center py-3.5 sm:py-4 rounded-xl sm:rounded-2xl hover:bg-gray-100 transition-all text-[10px] sm:text-xs uppercase tracking-widest shadow-xl active:scale-95">
                     Withdraw
                 </Link>
             </div>
         </div>
       </div>
 
-      {/* Daily Reward - Premium Look */}
-      <div className="glass-card rounded-[2.2rem] p-5 flex justify-between items-center shadow-lg border border-white/5">
-          <div className="flex items-center gap-4">
-              <div className="bg-green-500/10 p-4 rounded-2xl border border-green-500/20">
-                  <CalendarCheck className="text-green-500" size={24} />
+      {/* Daily Reward - Slimmer on mobile */}
+      <div className="glass-card rounded-[1.8rem] sm:rounded-[2.2rem] p-4 sm:p-5 flex justify-between items-center shadow-lg border border-white/5">
+          <div className="flex items-center gap-3 sm:gap-4">
+              <div className="bg-green-500/10 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-green-500/20">
+                  {/* Fixed: Merged duplicate className attribute */}
+                  <CalendarCheck size={20} className="text-green-500 sm:w-6 sm:h-6" />
               </div>
               <div>
-                  <h3 className="text-white font-bold text-sm">Daily Reward</h3>
+                  <h3 className="text-white font-bold text-xs sm:text-sm">Daily Reward</h3>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-orange-400 font-black text-[10px] uppercase">{user.dailyStreak || 1} Day Streak</span>
-                      <div className="w-1 h-1 rounded-full bg-gray-700"></div>
-                      <span className="text-gray-500 text-[10px] font-bold">Resets 00:00</span>
+                      <span className="text-orange-400 font-black text-[9px] sm:text-[10px] uppercase">{user.dailyStreak || 1} Day Streak</span>
                   </div>
               </div>
           </div>
           <button 
             onClick={handleDailyCheckIn}
             disabled={isCheckedInToday() || isClaiming}
-            className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
+            className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all ${
                 isCheckedInToday() 
                 ? 'bg-white/5 text-gray-500 border border-white/5 cursor-not-allowed' 
                 : 'bg-green-600 hover:bg-green-700 text-white shadow-lg shadow-green-900/20 active:scale-95'
             }`}
           >
-             {isCheckedInToday() ? 'Claimed' : 'Claim'}
+             {isCheckedInToday() ? 'Claimed' : (isClaiming ? '...' : 'Claim')}
           </button>
       </div>
 
-      {/* Grid Stats - USDT Unit Update */}
-      <div className="grid grid-cols-2 gap-5">
-        <div className="glass-card p-6 rounded-[2.2rem] relative overflow-hidden group border border-white/5">
-            <div className="absolute -right-2 -top-2 p-4 bg-blue-500/5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                <ArrowUpRight className="text-blue-500" size={40} />
+      {/* Stats Grid - Fixed sizes for responsiveness */}
+      <div className="grid grid-cols-2 gap-4 sm:gap-5">
+        <div className="glass-card p-4 sm:p-6 rounded-[1.8rem] sm:rounded-[2.2rem] border border-white/5">
+            <div className="bg-blue-500/10 p-2 sm:p-2.5 rounded-lg sm:rounded-xl w-fit mb-2 sm:mb-3">
+                {/* Fixed: Merged duplicate className attribute */}
+                <Trophy size={16} className="text-blue-500 sm:w-[18px] sm:h-[18px]" />
             </div>
-            <div className="bg-blue-500/10 p-2.5 rounded-xl w-fit mb-3 border border-blue-500/10">
-                <Trophy className="text-blue-500" size={18} />
-            </div>
-            <p className="text-gray-500 text-[9px] font-black uppercase tracking-widest">Available Balance</p>
-            <p className="text-white font-black text-2xl mt-0.5 tracking-tight">
-                {user.balance.toFixed(2)} <span className="text-[10px] text-gray-500">USDT</span>
-            </p>
+            <p className="text-gray-500 text-[8px] sm:text-[9px] font-black uppercase tracking-widest">Available</p>
+            <p className="text-white font-black text-xl sm:text-2xl mt-0.5 tracking-tight">{user.balance.toFixed(2)}</p>
         </div>
-        <div className="glass-card p-6 rounded-[2.2rem] relative overflow-hidden group border border-white/5">
-            <div className="bg-orange-500/10 p-2.5 rounded-xl w-fit mb-3 border border-orange-500/10">
-                <Award className="text-orange-500" size={18} />
+        <div className="glass-card p-4 sm:p-6 rounded-[1.8rem] sm:rounded-[2.2rem] border border-white/5">
+            <div className="bg-orange-500/10 p-2 sm:p-2.5 rounded-lg sm:rounded-xl w-fit mb-2 sm:mb-3">
+                {/* Fixed: Merged duplicate className attribute */}
+                <Award size={16} className="text-orange-500 sm:w-[18px] sm:h-[18px]" />
             </div>
-            <p className="text-gray-500 text-[9px] font-black uppercase tracking-widest">Tasks Completed</p>
-            <p className="text-white font-black text-2xl mt-0.5 tracking-tight">
-                {transactions.filter(t => t.type === 'EARNING').length} <span className="text-[10px] text-gray-500">EXC</span>
-            </p>
+            <p className="text-gray-500 text-[8px] sm:text-[9px] font-black uppercase tracking-widest">Completed</p>
+            <p className="text-white font-black text-xl sm:text-2xl mt-0.5 tracking-tight">{transactions.length}</p>
         </div>
       </div>
 
       {/* Activity Timeline */}
-      <div className="glass-card rounded-[2.2rem] p-6 border border-white/5 shadow-xl">
-        <div className="flex justify-between items-center mb-6">
-            <h3 className="text-white font-black text-[10px] uppercase tracking-[0.2em] flex items-center gap-2">
-                <Clock size={16} className="text-blue-500" /> Recent Activity
-            </h3>
-            <Link to="/wallet" className="text-blue-500 text-[10px] font-black uppercase tracking-widest hover:underline flex items-center">
-                History <ChevronRight size={14} />
-            </Link>
-        </div>
-        <div className="space-y-6 relative before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-[1px] before:bg-white/5">
+      <div className="glass-card rounded-[1.8rem] sm:rounded-[2.2rem] p-5 sm:p-6 border border-white/5 shadow-xl">
+        <h3 className="text-white font-black text-[9px] sm:text-[10px] uppercase tracking-[0.2em] mb-5 sm:mb-6 flex items-center gap-2">
+            <Clock size={14} className="text-blue-500 sm:w-4 sm:h-4" /> Recent Activity
+        </h3>
+        <div className="space-y-5 sm:space-y-6 relative before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-[1px] before:bg-white/5">
             {transactions.length === 0 ? (
-                <div className="text-center py-6">
-                    <p className="text-gray-600 text-xs font-bold italic">No transaction records</p>
-                </div>
+                <p className="text-gray-600 text-[10px] sm:text-xs font-bold italic py-4">No records yet</p>
             ) : (
                 transactions.map(tx => (
-                    <div key={tx.id} className="flex justify-between items-start pl-6 relative">
-                        <div className={`absolute left-0 top-1.5 w-3.5 h-3.5 rounded-full border-[3px] border-[#030712] ${tx.type === 'WITHDRAWAL' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]'}`}></div>
-                        <div className="min-w-0 pr-4 text-left">
-                            <p className="text-white text-xs font-bold truncate leading-none capitalize">{tx.description}</p>
-                            <p className="text-gray-600 text-[9px] font-bold mt-1.5 uppercase tracking-tighter">
-                                {new Date(tx.date).toLocaleDateString()} &bull; {new Date(tx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </p>
+                    <div key={tx.id} className="flex justify-between items-start pl-5 sm:pl-6 relative">
+                        <div className={`absolute left-0 top-1.5 w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full border-[2px] sm:border-[3px] border-[#030712] ${tx.type === 'WITHDRAWAL' ? 'bg-red-500' : 'bg-green-500'}`}></div>
+                        <div className="min-w-0 pr-3 sm:pr-4 text-left">
+                            <p className="text-white text-[11px] sm:text-xs font-bold truncate capitalize">{tx.description}</p>
+                            <p className="text-gray-600 text-[8px] sm:text-[9px] font-bold mt-1 uppercase">{new Date(tx.date).toLocaleDateString()}</p>
                         </div>
-                        <span className={`font-black text-sm whitespace-nowrap ${tx.type === 'WITHDRAWAL' ? 'text-red-400' : 'text-green-400'}`}>
+                        <span className={`font-black text-[12px] sm:text-sm whitespace-nowrap ${tx.type === 'WITHDRAWAL' ? 'text-red-400' : 'text-green-400'}`}>
                             {tx.type === 'WITHDRAWAL' ? '-' : '+'}{tx.amount.toFixed(2)}
                         </span>
                     </div>
