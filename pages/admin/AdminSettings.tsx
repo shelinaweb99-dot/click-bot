@@ -99,6 +99,8 @@ export const AdminSettings: React.FC = () => {
         await savePaymentMethod(method);
         setNewMethodName('');
         setNewMethodLabel('');
+        // Trigger global change event so user side can update
+        window.dispatchEvent(new Event('db_change'));
         await loadData();
     } catch (e) { alert("Failed to add method"); }
   };
@@ -107,6 +109,7 @@ export const AdminSettings: React.FC = () => {
     if (window.confirm('Delete this payment method?')) {
       try { 
           await deletePaymentMethod(id); 
+          window.dispatchEvent(new Event('db_change'));
           await loadData(); 
       } catch (e) { alert("Failed to delete method"); }
     }
@@ -117,6 +120,7 @@ export const AdminSettings: React.FC = () => {
       setMethods(updated);
       try {
           await updateAllPaymentMethods(updated);
+          window.dispatchEvent(new Event('db_change'));
       } catch (e) {
           alert("Failed to toggle method");
           loadData();
@@ -171,6 +175,8 @@ export const AdminSettings: React.FC = () => {
             updateAllPaymentMethods(methods)
         ]);
         setSaveStatus('Settings Sync Successful');
+        // Trigger global change event so user side can update
+        window.dispatchEvent(new Event('db_change'));
         setTimeout(() => setSaveStatus(''), 3000);
     } catch (e) { 
         setSaveStatus('Sync Failed'); 
@@ -239,7 +245,7 @@ export const AdminSettings: React.FC = () => {
             </div>
         </div>
 
-        {/* Payout Channels System (FIXED/ADDED) */}
+        {/* Payout Channels System */}
         <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
             <h2 className="text-xl font-black text-white mb-6 flex items-center gap-3 tracking-tight">
                 <CreditCard className="text-orange-500" size={24} /> Payout Channels

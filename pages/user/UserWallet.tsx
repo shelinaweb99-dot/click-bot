@@ -31,16 +31,20 @@ export const UserWallet: React.FC = () => {
             setHistory(myWithdrawals.reverse());
         }
         
-        const methods = await getPaymentMethods();
+        // Fix: Fetch and filter locally first to avoid stale state issues
+        const fetchedMethods = await getPaymentMethods();
+        const activeMethods = fetchedMethods.filter(m => m.isEnabled);
+        
         if (!isMounted.current) return;
-        setAvailableMethods(methods.filter(m => m.isEnabled));
+        setAvailableMethods(activeMethods);
         
         const settings = await getSystemSettings();
         if (!isMounted.current) return;
         setSystemSettings(settings);
         
-        if (availableMethods.length > 0 && !methodId) {
-            setMethodId(availableMethods[0].id);
+        // Fix: Use the local variable 'activeMethods' instead of 'availableMethods' state
+        if (activeMethods.length > 0 && !methodId) {
+            setMethodId(activeMethods[0].id);
         }
     } catch (e) {
         console.error("Wallet fetch error", e);
@@ -73,7 +77,7 @@ export const UserWallet: React.FC = () => {
         if (!isMounted.current) return;
         
         const val = parseFloat(amount);
-        const minAmount = systemSettings?.minWithdrawal || 5000; // Example 5000 points
+        const minAmount = systemSettings?.minWithdrawal || 5000;
 
         if (val < minAmount) {
             setMessage(`Minimum withdrawal is ${minAmount} Points.`);
@@ -154,7 +158,7 @@ export const UserWallet: React.FC = () => {
                         {availableMethods.length > 0 ? (
                             availableMethods.map(m => <option key={m.id} value={m.id}>{m.name}</option>)
                         ) : (
-                            <option>No methods configured</option>
+                            <option value="">No methods configured</option>
                         )}
                    </select>
                </div>
