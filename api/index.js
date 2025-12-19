@@ -13,9 +13,12 @@ async function connectToDatabase() {
     if (!process.env.MONGODB_URI) {
         throw new Error("MONGODB_URI is missing in Environment Variables");
     }
+    // Set strictly to avoid model errors
+    mongoose.set('strictQuery', true);
+    
     await mongoose.connect(process.env.MONGODB_URI, {
-        serverSelectionTimeoutMS: 5000,
-        socketTimeoutMS: 30000
+        serverSelectionTimeoutMS: 10000, // 10s
+        socketTimeoutMS: 45000,
     });
     cachedDb = mongoose.connection;
     return cachedDb;
@@ -112,11 +115,16 @@ const Announcement = mongoose.models.Announcement || mongoose.model('Announcemen
 
 // --- 3. HELPER: AUTHENTICATION ---
 async function authenticateUser(req) {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-    const token = authHeader.split(' ')[1];
-    if (!token) return null;
-    return await User.findOne({ sessionToken: token });
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+        const token = authHeader.split(' ')[1];
+        if (!token) return null;
+        return await User.findOne({ sessionToken: token });
+    } catch (e) {
+        console.error("Auth helper error:", e);
+        return null;
+    }
 }
 
 // --- 4. API HANDLER ---
@@ -138,11 +146,13 @@ export default async function handler(req, res) {
         // --- PUBLIC ACTIONS ---
         if (action === 'login' || action === 'register') {
             const { email, password, ...userData } = data;
+            if (!email) return res.status(400).json({ success: false, message: "Email required" });
+
             let user = await User.findOne({ email }).select('+password');
             const newToken = crypto.randomBytes(32).toString('hex');
 
             if (!user) {
-                if (action === 'login') return res.status(404).json({ success: false, message: "User not found." });
+                if (action === 'login') return res.status(404).json({ success: false, message: "Account not found." });
                 const hashedPassword = await bcrypt.hash(password, 10);
                 user = await User.create({
                     id: 'user_' + Date.now(),
@@ -169,7 +179,7 @@ export default async function handler(req, res) {
 
         // --- SECURE ACTIONS ---
         const currentUser = await authenticateUser(req);
-        if (!currentUser) return res.status(401).json({ success: false, message: "Unauthorized Session" });
+        if (!currentUser) return res.status(401).json({ success: false, message: "Session expired. Please login again." });
         const userId = currentUser.id;
 
         switch (action) {
@@ -182,7 +192,7 @@ export default async function handler(req, res) {
                 if (!task) return res.status(404).json({ message: "Task not found" });
                 const today = new Date().toISOString().split('T')[0];
                 const existing = await Transaction.findOne({ userId, taskId: data.taskId, date: { $regex: `^${today}` } });
-                if (existing) return res.status(400).json({ message: "Already completed today" });
+                if (existing) return res.status(400).json({ message: "Task already done today" });
 
                 await User.updateOne({ id: userId }, { $inc: { balance: task.reward } });
                 await Task.updateOne({ id: task.id }, { $inc: { completedCount: 1 } });
@@ -207,52 +217,39 @@ export default async function handler(req, res) {
             case 'playMiniGame': {
                 const gameType = data.gameType;
                 const today = new Date().toISOString().split('T')[0];
-                
                 const gamesSetting = await Setting.findById('games');
                 const config = gamesSetting?.data?.[gameType] || { isEnabled: true, dailyLimit: 10, minReward: 1, maxReward: 10 };
                 
-                if (!config.isEnabled) return res.status(400).json({ message: "Game disabled" });
+                if (!config.isEnabled) return res.status(400).json({ message: "Game currently disabled" });
 
                 let stats = currentUser.gameStats || {};
                 if (stats.lastPlayedDate !== today) stats = { lastPlayedDate: today, spinCount: 0, scratchCount: 0, guessCount: 0, lotteryCount: 0 };
                 
                 const countKey = `${gameType}Count`;
-                if (stats[countKey] >= config.dailyLimit) return res.status(400).json({ success: false, message: "Limit reached", left: 0 });
+                if (stats[countKey] >= config.dailyLimit) return res.status(400).json({ success: false, message: "Daily limit reached", left: 0 });
 
                 const reward = Math.floor(Math.random() * (config.maxReward - config.minReward + 1)) + config.minReward;
                 stats[countKey]++;
 
-                // Robust atomic update
-                await User.updateOne({ id: userId }, { 
-                    $inc: { balance: reward }, 
-                    $set: { gameStats: stats } 
-                });
-                
-                await Transaction.create({ 
-                    id: 'tx_g_' + Date.now(), 
-                    userId, 
-                    amount: reward, 
-                    type: 'GAME', 
-                    description: `Won in ${gameType}`, 
-                    date: new Date().toISOString() 
-                });
+                await User.updateOne({ id: userId }, { $inc: { balance: reward }, $set: { gameStats: stats } });
+                await Transaction.create({ id: 'tx_g_' + Date.now(), userId, amount: reward, type: 'GAME', description: `Won in ${gameType}`, date: new Date().toISOString() });
 
                 return res.json({ success: true, reward, message: `Won ${reward} points!`, left: config.dailyLimit - stats[countKey] });
             }
 
             case 'saveUser':
-                if (currentUser.role !== 'ADMIN' && currentUser.id !== data.user.id) return res.status(403).end();
+                if (currentUser.role !== 'ADMIN' && currentUser.id !== data.user.id) return res.status(403).json({ message: "Forbidden" });
                 await User.findOneAndUpdate({ id: data.user.id }, data.user);
                 return res.json({ success: true });
 
             case 'processReferral': {
                 const { userId, referrerId } = data;
-                if (userId === referrerId) return res.status(400).json({ message: "Error" });
+                if (userId === referrerId) return res.status(400).json({ message: "Cannot refer self" });
                 const user = await User.findOne({ id: userId });
-                if (!user || user.referredBy) return res.status(400).json({ message: "Denied" });
+                if (!user || user.referredBy) return res.status(400).json({ message: "Referral denied" });
                 
                 const referrer = await User.findOne({ id: referrerId });
-                if (!referrer) return res.status(404).json({ message: "Not Found" });
+                if (!referrer) return res.status(404).json({ message: "Referrer not found" });
 
                 await User.updateOne({ id: userId }, { $set: { referredBy: referrerId }, $inc: { balance: 10 } });
                 await User.updateOne({ id: referrerId }, { $inc: { balance: 25, referralCount: 1, referralEarnings: 25 } });
@@ -260,63 +257,65 @@ export default async function handler(req, res) {
                 await Transaction.create({ id: 'tx_ref_' + Date.now() + '_u', userId, amount: 10, type: 'REFERRAL', description: 'Referral Bonus', date: new Date().toISOString() });
                 await Transaction.create({ id: 'tx_ref_' + Date.now() + '_r', userId: referrerId, amount: 25, type: 'REFERRAL', description: `Referral: ${user.name}`, date: new Date().toISOString() });
 
-                return res.json({ success: true, message: "Success!" });
+                return res.json({ success: true, message: "Referral Success!" });
             }
 
             case 'getAllUsers': 
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required" });
                 return res.json(await User.find({}).limit(100));
             case 'getAllWithdrawals': 
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required" });
                 return res.json(await Withdrawal.find({}).sort({date:-1}));
             case 'createWithdrawal':
+                if (currentUser.balance < data.request.amount) return res.status(400).json({ message: "Insufficient balance" });
                 await Withdrawal.create(data.request);
                 await User.updateOne({ id: userId }, { $inc: { balance: -data.request.amount } });
                 await Transaction.create({ id: 'tx_w_' + Date.now(), userId, amount: data.request.amount, type: 'WITHDRAWAL', description: `Withdrawal Request`, date: new Date().toISOString() });
                 return res.json({ success: true });
             case 'updateWithdrawal':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required" });
                 await Withdrawal.updateOne({ id: data.id }, { status: data.status });
                 return res.json({ success: true });
             case 'deleteTask':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required" });
                 await Task.deleteOne({ id: data.id });
                 return res.json({ success: true });
             case 'saveTask':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required" });
                 await Task.findOneAndUpdate({ id: data.payload.id }, data.payload, { upsert: true });
                 return res.json({ success: true });
             case 'getSettings': return res.json((await Setting.findById(data.key))?.data || {});
             case 'saveSettings':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required" });
                 await Setting.findOneAndUpdate({ _id: data.key }, { _id: data.key, data: data.payload }, { upsert: true });
                 return res.json({ success: true });
 
             case 'getShorts': return res.json(await Short.find({}));
             case 'addShort':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required" });
                 const vId = data.url.match(/(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1];
-                if (!vId) throw new Error("Invalid URL");
+                if (!vId) return res.status(400).json({ message: "Invalid YouTube URL" });
                 await Short.create({ id: 'v_' + Date.now(), youtubeId: vId, url: data.url, addedAt: new Date().toISOString() });
                 return res.json({ success: true });
             case 'deleteShort':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required" });
                 await Short.deleteOne({ id: data.id });
                 return res.json({ success: true });
 
             case 'getAnnouncements': return res.json(await Announcement.find({}).sort({date:-1}));
             case 'addAnnouncement':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required" });
                 await Announcement.create(data.payload);
                 return res.json({ success: true });
             case 'deleteAnnouncement':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required" });
                 await Announcement.deleteOne({ id: data.id });
                 return res.json({ success: true });
 
-            default: return res.status(400).json({ message: "Unknown Action" });
+            default: return res.status(400).json({ message: "Action not implemented" });
         }
     } catch (e) {
-        return res.status(500).json({ success: false, message: e.message });
+        console.error("Critical API Error:", e);
+        return res.status(500).json({ success: false, message: e.message || "Internal server error" });
     }
 }
