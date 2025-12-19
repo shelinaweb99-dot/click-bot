@@ -26,9 +26,9 @@ export const UserProfile: React.FC = () => {
           if (!isMounted.current) return;
 
           if (!u) {
-              console.warn("User not found in profile init, clearing session");
-              localStorage.clear();
-              navigate('/login');
+              // If user is null but token existed, it means the session is likely dead
+              setError("Session expired or user not found.");
+              setLoading(false);
               return;
           }
 
@@ -41,7 +41,7 @@ export const UserProfile: React.FC = () => {
       } catch (e: any) {
           console.error("Profile init error", e);
           if (isMounted.current) {
-              setError(e.message || "Failed to load profile data.");
+              setError(e.message || "Failed to connect to the profile engine.");
               setLoading(false);
           }
       }
@@ -68,6 +68,7 @@ export const UserProfile: React.FC = () => {
 
   const copyToClipboard = (text: string) => {
       try {
+          if (!text) return;
           navigator.clipboard.writeText(text);
           alert("ID copied to clipboard!");
       } catch (e) {
@@ -86,12 +87,15 @@ export const UserProfile: React.FC = () => {
     <div className="min-h-[70vh] flex flex-col items-center justify-center text-white p-6 text-center space-y-4">
         <AlertCircle className="text-red-500" size={48} />
         <h2 className="text-xl font-black">Profile Error</h2>
-        <p className="text-gray-500 text-sm">{error || "User data mismatch."}</p>
+        <p className="text-gray-500 text-sm mb-4">{error || "Could not retrieve account details."}</p>
         <button 
-            onClick={() => window.location.reload()}
-            className="bg-blue-600 px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-widest"
+            onClick={() => {
+                localStorage.clear();
+                navigate('/login');
+            }}
+            className="bg-blue-600 px-8 py-3 rounded-2xl text-xs font-bold uppercase tracking-widest active:scale-95 transition-all shadow-lg shadow-blue-900/20"
         >
-            Retry Sync
+            Back to Portal
         </button>
     </div>
   );
@@ -112,14 +116,14 @@ export const UserProfile: React.FC = () => {
                 {(user.name || 'U').charAt(0).toUpperCase()}
             </div>
             <h2 className="text-2xl font-black text-white tracking-tight">{user.name || 'Anonymous User'}</h2>
-            <p className="text-gray-500 text-sm font-medium mb-6">{user.email}</p>
+            <p className="text-gray-500 text-sm font-medium mb-6">{user.email || 'No email registered'}</p>
             
             <button 
                 onClick={() => copyToClipboard(user.id)}
                 className="bg-black/40 px-5 py-3 rounded-2xl flex items-center gap-4 border border-white/5 group hover:border-blue-500/30 transition-all"
             >
                 <span className="text-gray-600 text-[10px] font-black uppercase tracking-widest">Referral ID</span>
-                <code className="text-blue-400 font-mono text-sm tracking-tighter">{user.id}</code>
+                <code className="text-blue-400 font-mono text-sm tracking-tighter">{user.id || 'N/A'}</code>
                 <Copy size={14} className="text-gray-600 group-hover:text-blue-400 transition-colors" />
             </button>
         </div>
@@ -167,7 +171,7 @@ export const UserProfile: React.FC = () => {
 
         <div className="pt-6 text-center space-y-1">
             <p className="text-gray-700 text-[10px] font-black uppercase tracking-[0.4em]">Fintech Bot Engine</p>
-            <p className="text-gray-800 text-[9px] font-bold">Release 2.9.1 &bull; Stable Build</p>
+            <p className="text-gray-800 text-[9px] font-bold">Version 2.9.5 &bull; Stable Build</p>
         </div>
     </div>
   );
