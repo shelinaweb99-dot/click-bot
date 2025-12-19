@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { getPaymentMethods, savePaymentMethod, deletePaymentMethod, getAdSettings, saveAdSettings, getSystemSettings, saveSystemSettings } from '../../services/mockDb';
+import { getPaymentMethods, savePaymentMethod, deletePaymentMethod, updateAllPaymentMethods, getAdSettings, saveAdSettings, getSystemSettings, saveSystemSettings } from '../../services/mockDb';
 import { WithdrawalMethod, AdSettings, AdProvider, SystemSettings, AdLink, RotationMode, AdRotationConfig } from '../../types';
-import { Plus, Trash2, Save, MonitorPlay, Bot, AlertTriangle, Lock, Code, Info, Link as LinkIcon, RefreshCcw, ToggleLeft, ToggleRight, List, DollarSign, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Save, MonitorPlay, Bot, AlertTriangle, Lock, Code, Info, Link as LinkIcon, RefreshCcw, ToggleLeft, ToggleRight, List, DollarSign, Loader2, CreditCard, CheckCircle } from 'lucide-react';
 
 export const AdminSettings: React.FC = () => {
   const [methods, setMethods] = useState<WithdrawalMethod[]>([]);
@@ -32,7 +32,6 @@ export const AdminSettings: React.FC = () => {
   };
 
   const [adSettings, setAdSettings] = useState<AdSettings>(defaultAdSettings);
-
   const [rotationConfig, setRotationConfig] = useState<AdRotationConfig>(defaultAdSettings.rotation!);
 
   const defaultSystemSettings: SystemSettings = {
@@ -47,7 +46,6 @@ export const AdminSettings: React.FC = () => {
   };
 
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(defaultSystemSettings);
-
   const [saveStatus, setSaveStatus] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -64,7 +62,6 @@ export const AdminSettings: React.FC = () => {
 
         setMethods(Array.isArray(m) ? m : []);
         
-        // Robust Merging to prevent undefined property crashes (like .includes or .length)
         const mergedAds = { ...defaultAdSettings, ...a };
         setAdSettings(mergedAds);
         
@@ -100,16 +97,30 @@ export const AdminSettings: React.FC = () => {
           isEnabled: true
         };
         await savePaymentMethod(method);
-        await loadData();
         setNewMethodName('');
         setNewMethodLabel('');
+        await loadData();
     } catch (e) { alert("Failed to add method"); }
   };
 
   const handleDeleteMethod = async (id: string) => {
     if (window.confirm('Delete this payment method?')) {
-      try { await deletePaymentMethod(id); await loadData(); } catch (e) { alert("Failed to delete method"); }
+      try { 
+          await deletePaymentMethod(id); 
+          await loadData(); 
+      } catch (e) { alert("Failed to delete method"); }
     }
+  };
+
+  const toggleMethod = async (id: string) => {
+      const updated = methods.map(m => m.id === id ? { ...m, isEnabled: !m.isEnabled } : m);
+      setMethods(updated);
+      try {
+          await updateAllPaymentMethods(updated);
+      } catch (e) {
+          alert("Failed to toggle method");
+          loadData();
+      }
   };
 
   const handleAddRotationLink = () => {
@@ -156,7 +167,8 @@ export const AdminSettings: React.FC = () => {
         const mergedAdSettings = { ...adSettings, rotation: rotationConfig };
         await Promise.all([
             saveAdSettings(mergedAdSettings),
-            saveSystemSettings(systemSettings)
+            saveSystemSettings(systemSettings),
+            updateAllPaymentMethods(methods)
         ]);
         setSaveStatus('Settings Sync Successful');
         setTimeout(() => setSaveStatus(''), 3000);
@@ -198,7 +210,7 @@ export const AdminSettings: React.FC = () => {
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div className="space-y-2">
-                    <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Min Withdrawal (USDT)</label>
+                    <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Min Withdrawal (Pts)</label>
                     <input 
                         type="number" 
                         className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl focus:border-green-500 outline-none transition-all font-mono"
@@ -227,7 +239,74 @@ export const AdminSettings: React.FC = () => {
             </div>
         </div>
 
-        {/* Telegram API Settings */}
+        {/* Payout Channels System (FIXED/ADDED) */}
+        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
+            <h2 className="text-xl font-black text-white mb-6 flex items-center gap-3 tracking-tight">
+                <CreditCard className="text-orange-500" size={24} /> Payout Channels
+            </h2>
+            
+            {/* List Existing Methods */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                {methods.length === 0 ? (
+                    <div className="md:col-span-2 p-10 text-center text-gray-600 font-bold border border-dashed border-white/10 rounded-3xl italic">
+                        No withdrawal channels configured yet.
+                    </div>
+                ) : (
+                    methods.map(m => (
+                        <div key={m.id} className="bg-[#0b1120] p-5 rounded-2xl border border-white/5 flex justify-between items-center group transition-all hover:border-orange-500/30">
+                            <div className="flex items-center gap-4">
+                                <div className={`p-3 rounded-xl ${m.isEnabled ? 'bg-orange-500/10 text-orange-500' : 'bg-gray-800 text-gray-500'}`}>
+                                    <CreditCard size={20} />
+                                </div>
+                                <div>
+                                    <h4 className={`font-black text-sm uppercase tracking-tight ${m.isEnabled ? 'text-white' : 'text-gray-600'}`}>{m.name}</h4>
+                                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">{m.detailsLabel}</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button type="button" onClick={() => toggleMethod(m.id)} className={`transition-colors ${m.isEnabled ? 'text-green-500' : 'text-gray-600'}`}>
+                                    {m.isEnabled ? <ToggleRight size={28} /> : <ToggleLeft size={28} />}
+                                </button>
+                                <button type="button" onClick={() => handleDeleteMethod(m.id)} className="text-gray-600 hover:text-red-500 transition-colors p-2">
+                                    <Trash2 size={18} />
+                                </button>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+
+            {/* Add New Method Form */}
+            <div className="bg-white/5 p-6 rounded-3xl border border-white/5">
+                <h3 className="text-xs font-black text-white uppercase tracking-[0.2em] mb-4">Add New Payout Channel</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <input 
+                        type="text" 
+                        placeholder="Channel Name (e.g. BKash, USDT)" 
+                        className="bg-[#0b1120] border border-white/5 text-white p-4 rounded-xl focus:border-orange-500 outline-none text-xs font-bold"
+                        value={newMethodName}
+                        onChange={e => setNewMethodName(e.target.value)}
+                    />
+                    <input 
+                        type="text" 
+                        placeholder="Input Label (e.g. Number, Address)" 
+                        className="bg-[#0b1120] border border-white/5 text-white p-4 rounded-xl focus:border-orange-500 outline-none text-xs font-bold"
+                        value={newMethodLabel}
+                        onChange={e => setNewMethodLabel(e.target.value)}
+                    />
+                </div>
+                <button 
+                    type="button" 
+                    onClick={handleAddMethod}
+                    disabled={!newMethodName || !newMethodLabel}
+                    className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-gray-800 text-white font-black text-[10px] uppercase tracking-widest py-4 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95"
+                >
+                    <Plus size={16} /> Register Channel
+                </button>
+            </div>
+        </div>
+
+        {/* Telegram Integration Keys */}
         <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
             <h2 className="text-xl font-black text-white mb-6 flex items-center gap-3 tracking-tight">
                 <Bot className="text-blue-500" size={24} /> Integration Keys

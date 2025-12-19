@@ -1,5 +1,5 @@
 
-import { User, Task, WithdrawalRequest, UserRole, Transaction, AdSettings, SystemSettings, Announcement, GameSettings, ShortVideo, ShortsSettings } from '../types';
+import { User, Task, WithdrawalRequest, UserRole, Transaction, AdSettings, SystemSettings, Announcement, GameSettings, ShortVideo, ShortsSettings, WithdrawalMethod } from '../types';
 
 const API_URL = '/api';
 
@@ -26,7 +26,7 @@ const apiCall = async (action: string, data: any = {}) => {
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': token ? `Bearer ${token}` : '',
-                'X-Telegram-Init-Data': tgData // CRITICAL: Identify user to backend
+                'X-Telegram-Init-Data': tgData 
             },
             body: JSON.stringify({ action, ...data }),
             signal: controller.signal
@@ -79,7 +79,7 @@ export const updateWithdrawalStatus = async (id: string, status: string) => apiC
 const getSetting = async (key: string, defaultVal: any) => {
     try {
         const data = await apiCall('getSettings', { key });
-        return Object.keys(data).length ? data : defaultVal;
+        return (data && Object.keys(data).length) ? data : defaultVal;
     } catch { return defaultVal; }
 };
 
@@ -95,7 +95,6 @@ export const getShortsSettings = async (): Promise<ShortsSettings> => getSetting
 export const saveShortsSettings = async (s: ShortsSettings) => apiCall('saveSettings', { key: 'shorts', payload: s });
 
 export const getShorts = async (): Promise<ShortVideo[]> => apiCall('getShorts');
-// Fix: Added missing getManualShorts export
 export const getManualShorts = async (): Promise<ShortVideo[]> => apiCall('getShorts');
 export const addShort = async (url: string) => apiCall('addShort', { url });
 export const deleteShort = async (id: string) => apiCall('deleteShort', { id });
@@ -119,11 +118,37 @@ export const getLeaderboard = async () => {
 export const getUsers = async () => apiCall('getAllUsers');
 export const fetchYouTubeMetadata = async (videoId: string) => null;
 export const verifyTelegramMembership = async (c: string, u: number) => ({ success: true });
-// Fix: Added missing processReferral export
 export const processReferral = async (userId: string, code: string) => apiCall('processReferral', { userId, code });
-export const getPaymentMethods = async () => getSetting('payment_methods', []);
-export const savePaymentMethod = async (m: any) => {}; 
-export const deletePaymentMethod = async (id: string) => {}; 
+
+// PAYMENT METHODS MANAGEMENT
+export const getPaymentMethods = async (): Promise<WithdrawalMethod[]> => {
+    const data = await getSetting('payment_methods', { methods: [] });
+    return Array.isArray(data.methods) ? data.methods : [];
+};
+
+export const savePaymentMethod = async (method: WithdrawalMethod) => {
+    const current = await getPaymentMethods();
+    const exists = current.findIndex(m => m.id === method.id);
+    let updated;
+    if (exists > -1) {
+        updated = [...current];
+        updated[exists] = method;
+    } else {
+        updated = [...current, method];
+    }
+    return apiCall('saveSettings', { key: 'payment_methods', payload: { methods: updated } });
+};
+
+export const deletePaymentMethod = async (id: string) => {
+    const current = await getPaymentMethods();
+    const updated = current.filter(m => m.id !== id);
+    return apiCall('saveSettings', { key: 'payment_methods', payload: { methods: updated } });
+};
+
+export const updateAllPaymentMethods = async (methods: WithdrawalMethod[]) => {
+    return apiCall('saveSettings', { key: 'payment_methods', payload: { methods } });
+};
+
 export const extractYouTubeId = (url: string) => {
     const match = url.match(/(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
     return match ? match[1] : null;
