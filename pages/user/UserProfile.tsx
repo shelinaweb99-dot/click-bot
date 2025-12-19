@@ -1,33 +1,47 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { User, SystemSettings } from '../../types';
-import { getCurrentUserId, getUserById, saveUser, logout, getSystemSettings, subscribeToChanges } from '../../services/mockDb';
-import { User as UserIcon, LogOut, Settings, MessageCircle, Lock, Save, Copy } from 'lucide-react';
+import { getCurrentUserId, getUserById, logout, getSystemSettings, subscribeToChanges } from '../../services/mockDb';
+import { User as UserIcon, LogOut, Settings, MessageCircle, Copy, Loader2, ChevronRight, ShieldCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const UserProfile: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
-  const [newPassword, setNewPassword] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const isMounted = useRef(true);
 
+  const init = async () => {
+      try {
+          const id = getCurrentUserId();
+          if (!id) {
+              navigate('/login');
+              return;
+          }
+          const u = await getUserById(id);
+          if (!isMounted.current) return;
+
+          if (!u) {
+              localStorage.clear();
+              navigate('/login');
+              return;
+          }
+
+          setUser(u);
+          const s = await getSystemSettings();
+          if (isMounted.current) {
+              setSystemSettings(s);
+              setLoading(false);
+          }
+      } catch (e) {
+          console.error("Profile init error", e);
+          if (isMounted.current) setLoading(false);
+      }
+  };
+
   useEffect(() => {
     isMounted.current = true;
-    const init = async () => {
-        try {
-            const id = getCurrentUserId();
-            if (id) {
-                const u = await getUserById(id);
-                if (isMounted.current) setUser(u);
-            }
-            const s = await getSystemSettings();
-            if (isMounted.current) setSystemSettings(s);
-        } catch (e) {
-            console.error("Profile init error", e);
-        }
-    };
     init();
     const unsub = subscribeToChanges(() => {
         if (isMounted.current) init();
@@ -45,64 +59,91 @@ export const UserProfile: React.FC = () => {
       }
   };
 
-  const handleUpdatePassword = async (e: React.FormEvent) => {
-      e.preventDefault();
-      // Note: Updating password now requires Firebase Auth password update, which is sensitive.
-      // For this simplified version, we are disabling the "Update Password" UI if using Firebase Auth 
-      // as it requires re-authentication. 
-      alert("Please reset your password via the Login page 'Forgot Password' option (not implemented yet).");
+  const copyToClipboard = (text: string) => {
+      navigator.clipboard.writeText(text);
+      alert("ID copied to clipboard!");
   };
 
-  if (!user) return <div className="text-center text-white mt-10">Loading...</div>;
+  if (loading || !user) return (
+    <div className="min-h-[70vh] flex flex-col items-center justify-center text-white space-y-4">
+        <Loader2 className="animate-spin text-blue-500" size={32} />
+        <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Loading Profile</p>
+    </div>
+  );
 
   return (
-    <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Settings className="text-blue-500" /> My Profile
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-12">
+        <h1 className="text-2xl font-black text-white flex items-center gap-3">
+            <div className="bg-blue-600/20 p-2.5 rounded-xl border border-blue-500/20">
+                <Settings className="text-blue-500" size={24} />
+            </div> 
+            Account Settings
         </h1>
 
-        {/* Info Card */}
-        <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 flex flex-col items-center text-center">
-            <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-3xl font-bold text-white mb-4">
+        {/* Info Card - Pro Look */}
+        <div className="glass-card p-8 rounded-[2.5rem] flex flex-col items-center text-center relative overflow-hidden border border-white/5">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-purple-600"></div>
+            <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-indigo-700 rounded-full flex items-center justify-center text-4xl font-black text-white mb-5 shadow-2xl shadow-blue-500/20 border-4 border-[#030712]">
                 {user.name.charAt(0).toUpperCase()}
             </div>
-            <h2 className="text-xl font-bold text-white">{user.name}</h2>
-            <p className="text-gray-400 text-sm mb-4">{user.email}</p>
+            <h2 className="text-2xl font-black text-white tracking-tight">{user.name}</h2>
+            <p className="text-gray-500 text-sm font-medium mb-6">{user.email}</p>
             
-            <div className="bg-black/30 px-4 py-2 rounded-lg flex items-center gap-3 border border-gray-700">
-                <span className="text-gray-500 text-xs uppercase">User ID</span>
-                <code className="text-blue-400 font-mono text-sm">{user.id}</code>
-                <button onClick={() => navigator.clipboard.writeText(user.id)} className="text-gray-400 hover:text-white">
-                    <Copy size={14} />
-                </button>
-            </div>
+            <button 
+                onClick={() => copyToClipboard(user.id)}
+                className="bg-black/40 px-5 py-3 rounded-2xl flex items-center gap-4 border border-white/5 group hover:border-blue-500/30 transition-all"
+            >
+                <span className="text-gray-600 text-[10px] font-black uppercase tracking-widest">User Ref ID</span>
+                <code className="text-blue-400 font-mono text-sm tracking-tighter">{user.id}</code>
+                <Copy size={14} className="text-gray-600 group-hover:text-blue-400 transition-colors" />
+            </button>
         </div>
 
-        {/* Support */}
-        <div className="bg-blue-600/10 border border-blue-600/30 p-4 rounded-xl flex items-center justify-between">
-            <div>
-                <h3 className="font-bold text-blue-400">Need Help?</h3>
-                <p className="text-xs text-blue-200">Contact admin for payment issues.</p>
-            </div>
+        {/* Menu Items */}
+        <div className="space-y-3">
             <a 
                 href={systemSettings?.supportLink || '#'} 
                 target="_blank"
                 rel="noreferrer"
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
+                className="glass-card p-5 rounded-3xl flex items-center justify-between border border-white/5 hover:bg-white/5 transition-all group"
             >
-                <MessageCircle size={16} /> Contact Support
+                <div className="flex items-center gap-4">
+                    <div className="bg-blue-500/10 p-3 rounded-2xl text-blue-500 group-hover:bg-blue-500 group-hover:text-white transition-all">
+                        <MessageCircle size={20} />
+                    </div>
+                    <div className="text-left">
+                        <h4 className="text-white font-bold text-sm">Customer Support</h4>
+                        <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">Contact for payment issues</p>
+                    </div>
+                </div>
+                <ChevronRight size={18} className="text-gray-600" />
             </a>
+
+            <div className="glass-card p-5 rounded-3xl flex items-center justify-between border border-white/5 opacity-80">
+                <div className="flex items-center gap-4">
+                    <div className="bg-amber-500/10 p-3 rounded-2xl text-amber-500">
+                        <ShieldCheck size={20} />
+                    </div>
+                    <div className="text-left">
+                        <h4 className="text-white font-bold text-sm">Security & Privacy</h4>
+                        <p className="text-gray-500 text-[10px] font-medium uppercase tracking-wider">Secure Infrastructure Active</p>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        {/* Logout */}
+        {/* Logout Button */}
         <button 
             onClick={handleLogout}
-            className="w-full bg-red-600/10 hover:bg-red-600/20 text-red-500 border border-red-500/30 py-4 rounded-xl font-bold flex items-center justify-center gap-2"
+            className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 py-5 rounded-[1.8rem] font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all active:scale-95"
         >
-            <LogOut size={20} /> Log Out
+            <LogOut size={20} strokeWidth={2.5} /> Terminate Session
         </button>
 
-        <p className="text-center text-gray-600 text-xs">Version 2.5.1 (Secure)</p>
+        <div className="pt-6 text-center space-y-1">
+            <p className="text-gray-700 text-[10px] font-black uppercase tracking-[0.4em]">Fintech Bot Engine</p>
+            <p className="text-gray-800 text-[9px] font-bold">Release 2.8.0 &bull; Encrypted v3</p>
+        </div>
     </div>
   );
 };

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { WithdrawalRequest, WithdrawalStatus, WithdrawalMethod, User, SystemSettings } from '../../types';
 import { getCurrentUserId, getUserById, createWithdrawal, getWithdrawals, saveUser, getPaymentMethods, subscribeToChanges, getSystemSettings, verifyTelegramMembership } from '../../services/mockDb';
-import { DollarSign, History, AlertTriangle, Lock, Loader2 } from 'lucide-react';
+import { DollarSign, History, AlertTriangle, Lock, Loader2, ArrowUpRight } from 'lucide-react';
 
 export const UserWallet: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -62,9 +62,10 @@ export const UserWallet: React.FC = () => {
 
   const selectedMethod = availableMethods.find(m => m.id === methodId);
 
-  const calculateUsd = (points: number) => {
-      const rate = systemSettings?.pointsPerDollar || 1000;
-      return (points / rate).toFixed(2);
+  const calculateUsd = (usdt: number) => {
+      const rate = systemSettings?.pointsPerDollar || 1; // Assuming 1:1 if configured as points
+      // If the user wants to see "USDT", usually 1 point = 1 USDT for simplicity in labels
+      return usdt.toFixed(2);
   }
 
   const handleWithdraw = async (e: React.FormEvent) => {
@@ -87,26 +88,23 @@ export const UserWallet: React.FC = () => {
         const minAmount = systemSettings?.minWithdrawal || 50;
 
         if (val < minAmount) {
-            setMessage(`Minimum withdrawal amount is ${minAmount} points.`);
+            setMessage(`Minimum withdrawal is ${minAmount} USDT.`);
             setIsSubmitting(false);
             return;
         }
         if (freshUser.balance < val) {
-            setMessage('Insufficient balance!');
+            setMessage('Insufficient USDT balance!');
             setIsSubmitting(false);
             return;
         }
 
-        // --- BOT MEMBERSHIP LOCK CHECK ---
         if (systemSettings?.requiredChannelId) {
-            // Note: We don't need bot token here anymore, handled by server
             if (!freshUser.telegramId) {
-                setMessage("Security Lock: You must link your Telegram ID to withdraw.");
+                setMessage("Link your Telegram ID to enable withdrawals.");
                 setIsSubmitting(false);
                 return;
             }
 
-            // Verify membership securely
             const verify = await verifyTelegramMembership(
                 systemSettings.requiredChannelId, 
                 freshUser.telegramId
@@ -115,12 +113,11 @@ export const UserWallet: React.FC = () => {
             if (!isMounted.current) return;
 
             if (!verify.success) {
-                setMessage(`Membership Locked: You must join ${systemSettings.requiredChannelId} to withdraw.`);
+                setMessage(`Membership Lock: Join ${systemSettings.requiredChannelId} to continue.`);
                 setIsSubmitting(false);
                 return;
             }
         }
-        // --------------------------------
 
         freshUser.balance -= val;
         await saveUser(freshUser);
@@ -141,142 +138,146 @@ export const UserWallet: React.FC = () => {
             await createWithdrawal(req);
             if (isMounted.current) {
                 setHistory([req, ...history]);
-                setMessage('Withdrawal request submitted successfully!');
+                setMessage('Withdrawal request successful! USDT deducted.');
                 setAmount('');
                 setDetails('');
             }
         } catch (dbError) {
-            console.error("Withdrawal creation failed, refunding user...", dbError);
             freshUser.balance += val;
             await saveUser(freshUser);
             if (isMounted.current) {
                 setUser(freshUser);
-                setMessage('Network error. Points refunded to balance.');
+                setMessage('Network error. USDT refunded.');
             }
         }
 
     } catch (err) {
         console.error(err);
-        if (isMounted.current) setMessage('An unexpected error occurred.');
+        if (isMounted.current) setMessage('A system error occurred.');
     } finally {
         if (isMounted.current) setIsSubmitting(false);
     }
   };
 
-  if (!user) return <div className="text-white text-center mt-10">Loading Wallet...</div>;
+  if (!user) return (
+    <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
+        <Loader2 className="animate-spin text-blue-500" />
+        <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Syncing Wallet</p>
+    </div>
+  );
 
   return (
-    <div className="space-y-6">
-       <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 text-center relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-green-400 to-blue-500"></div>
-            <p className="text-gray-400 mb-1">Current Balance</p>
-            <h1 className="text-4xl font-bold text-white">{user.balance.toFixed(2)}</h1>
-            <p className="text-green-400 font-medium text-sm mt-1">
-                ≈ ${calculateUsd(user.balance)} USD
-            </p>
+    <div className="space-y-6 animate-in fade-in duration-500 pb-12">
+       {/* High-end Balance Card */}
+       <div className="glass-card p-8 rounded-[2.5rem] border border-white/5 text-center relative overflow-hidden shadow-2xl">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 to-indigo-600"></div>
+            <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Withdrawable Balance</p>
+            <div className="flex items-baseline justify-center gap-2">
+                <h1 className="text-5xl font-black text-white tracking-tighter">{user.balance.toFixed(2)}</h1>
+                <span className="text-blue-500 font-black italic tracking-widest">USDT</span>
+            </div>
+            <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 bg-green-500/10 rounded-full">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                <span className="text-[10px] font-black text-green-500 uppercase">Verified Account</span>
+            </div>
        </div>
 
        {systemSettings?.requiredChannelId && (
-           <div className="bg-orange-500/10 border border-orange-500/30 p-3 rounded-lg flex items-center gap-2 text-sm text-orange-400">
+           <div className="bg-orange-500/10 border border-orange-500/20 p-4 rounded-3xl flex items-center gap-3 text-xs text-orange-400 font-medium">
                <Lock className="shrink-0" size={18} />
-               <span>Withdrawals are locked until you join <b>{systemSettings.requiredChannelId}</b>.</span>
+               <span>Anti-Fraud Check: You must join <b className="text-orange-300 underline">{systemSettings.requiredChannelId}</b> before requesting payouts.</span>
            </div>
        )}
 
-       <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-           <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-               <DollarSign size={20} className="text-green-500" /> Request Withdrawal
+       <div className="glass-card p-6 rounded-[2.5rem] border border-white/5 shadow-xl">
+           <h2 className="text-lg font-black text-white mb-6 flex items-center gap-3">
+               <div className="bg-green-500/10 p-2 rounded-lg text-green-500"><DollarSign size={20} /></div>
+               Payout Request
            </h2>
            
-           <div className="bg-blue-600/10 border border-blue-600/30 p-3 rounded-lg text-sm text-blue-300 mb-4 flex items-center gap-2">
-               <DollarSign size={16} />
-               <span>Exchange Rate: <b>{systemSettings?.pointsPerDollar || 1000} Points = $1.00 USD</b></span>
-           </div>
-           
            {message && (
-               <div className={`p-3 rounded text-sm mb-4 flex items-center gap-2 ${message.includes('success') ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
-                   {message.includes('Locked') ? <Lock size={16} /> : <AlertTriangle size={16} />}
+               <div className={`p-4 rounded-2xl text-xs font-bold mb-6 flex items-center gap-3 animate-in shake duration-300 ${message.toLowerCase().includes('success') ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                   {message.includes('Lock') ? <Lock size={16} /> : <AlertTriangle size={16} />}
                    {message}
                </div>
            )}
 
-           <form onSubmit={handleWithdraw} className="space-y-4">
-               <div>
-                   <label className="block text-gray-400 text-sm mb-1">Payment Method</label>
+           <form onSubmit={handleWithdraw} className="space-y-5">
+               <div className="space-y-1.5">
+                   <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Payment Method</label>
                    {availableMethods.length > 0 ? (
                        <select 
                             value={methodId} 
                             onChange={e => setMethodId(e.target.value)}
-                            className="w-full bg-gray-700 text-white rounded p-3 outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full bg-[#030712]/50 text-white rounded-2xl p-4 outline-none border border-white/5 focus:border-blue-500 transition-all font-bold text-sm"
                         >
                            {availableMethods.map(m => (
                                <option key={m.id} value={m.id}>{m.name}</option>
                            ))}
                        </select>
                    ) : (
-                       <p className="text-red-400 text-sm">No payment methods available.</p>
+                       <div className="p-4 bg-red-500/5 text-red-500 text-xs font-bold rounded-2xl border border-red-500/10">System: No payout methods configured by admin.</div>
                    )}
                </div>
                
                {selectedMethod && (
                    <>
-                       <div>
-                           <label className="block text-gray-400 text-sm mb-1">Amount (Points)</label>
-                           <input 
-                                type="number" 
-                                value={amount}
-                                onChange={e => setAmount(e.target.value)}
-                                placeholder={`Min ${systemSettings?.minWithdrawal || 50}`}
-                                className="w-full bg-gray-700 text-white rounded p-3 outline-none focus:ring-2 focus:ring-blue-500"
-                                required
-                           />
-                           {amount && (
-                               <p className="text-xs text-green-400 mt-2 text-right font-medium">
-                                   Receiving: ${calculateUsd(parseFloat(amount))}
-                               </p>
-                           )}
+                       <div className="space-y-1.5">
+                           <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Withdrawal Amount (USDT)</label>
+                           <div className="relative">
+                               <input 
+                                    type="number" 
+                                    value={amount}
+                                    onChange={e => setAmount(e.target.value)}
+                                    placeholder={`Minimum ${systemSettings?.minWithdrawal || 50}`}
+                                    className="w-full bg-[#030712]/50 text-white rounded-2xl p-4 outline-none border border-white/5 focus:border-blue-500 transition-all font-bold text-sm"
+                                    required
+                               />
+                               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-700 font-black text-[10px] uppercase">USDT</span>
+                           </div>
                        </div>
-                       <div>
-                           <label className="block text-gray-400 text-sm mb-1">{selectedMethod.detailsLabel}</label>
+                       <div className="space-y-1.5">
+                           <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">{selectedMethod.detailsLabel}</label>
                            <input 
                                 type="text" 
                                 value={details}
                                 onChange={e => setDetails(e.target.value)}
-                                placeholder={`Enter your ${selectedMethod.name} details`}
-                                className="w-full bg-gray-700 text-white rounded p-3 outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder={`Enter ${selectedMethod.name} address or ID`}
+                                className="w-full bg-[#030712]/50 text-white rounded-2xl p-4 outline-none border border-white/5 focus:border-blue-500 transition-all font-bold text-sm placeholder:text-gray-800"
                                 required
                            />
                        </div>
                        <button 
                         type="submit" 
-                        disabled={isSubmitting}
-                        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-bold py-3 rounded-lg mt-2 transition-all flex justify-center items-center gap-2"
+                        disabled={isSubmitting || !amount}
+                        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-2xl shadow-xl shadow-blue-600/10 active:scale-95 transition-all mt-4"
                        >
-                           {isSubmitting ? <><Loader2 className="animate-spin" size={18} /> Checking...</> : 'Submit Request'}
+                           {isSubmitting ? <Loader2 className="animate-spin mx-auto" size={18} /> : 'Process Payout'}
                        </button>
                    </>
                )}
            </form>
        </div>
 
-       <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
-           <h3 className="text-white font-bold mb-4 flex items-center gap-2">
-               <History size={18} /> Withdrawal History
+       {/* History List */}
+       <div className="glass-card p-6 rounded-[2.5rem] border border-white/5 shadow-xl">
+           <h3 className="text-white font-black text-[10px] uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
+               <History size={16} className="text-gray-500" /> Payout History
            </h3>
-           <div className="space-y-3">
-               {history.length === 0 ? <p className="text-gray-500 text-center text-sm">No withdrawals yet.</p> : 
+           <div className="space-y-4">
+               {history.length === 0 ? <p className="text-gray-600 text-center text-[11px] font-bold py-6 italic">No payout records found</p> : 
                 history.map(item => (
-                    <div key={item.id} className="flex justify-between items-center bg-gray-700/50 p-3 rounded-lg border border-gray-700">
-                        <div>
-                            <p className="text-white font-medium">{item.method} - {item.amount}</p>
-                            <p className="text-xs text-gray-400">{new Date(item.date).toLocaleDateString()}</p>
+                    <div key={item.id} className="flex justify-between items-center bg-[#030712]/30 p-4 rounded-2xl border border-white/5 group hover:border-blue-500/20 transition-all">
+                        <div className="text-left">
+                            <p className="text-white text-sm font-bold">{item.method}</p>
+                            <p className="text-[10px] text-gray-600 font-bold uppercase mt-1">{new Date(item.date).toLocaleDateString()}</p>
                         </div>
                         <div className="text-right">
-                             <p className="text-xs text-gray-300 mb-1">${calculateUsd(item.amount)}</p>
-                             <span className={`px-2 py-1 rounded text-xs font-bold ${
-                                 item.status === 'APPROVED' ? 'bg-green-500/20 text-green-400' :
-                                 item.status === 'REJECTED' ? 'bg-red-500/20 text-red-400' :
-                                 'bg-yellow-500/20 text-yellow-400'
+                             <p className="text-sm font-black text-white mb-1.5">{item.amount.toFixed(2)} USDT</p>
+                             <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
+                                 item.status === 'APPROVED' ? 'bg-green-500/10 text-green-500' :
+                                 item.status === 'REJECTED' ? 'bg-red-500/10 text-red-400' :
+                                 'bg-amber-500/10 text-amber-500'
                              }`}>
                                  {item.status}
                              </span>
