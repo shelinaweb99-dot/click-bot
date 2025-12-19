@@ -10,22 +10,31 @@ async function connectToDatabase() {
     if (cachedDb && mongoose.connection.readyState === 1) {
         return cachedDb;
     }
-    if (!process.env.MONGODB_URI) {
-        throw new Error("MONGODB_URI is missing in Environment Variables");
-    }
-    // Set strictly to avoid model errors
-    mongoose.set('strictQuery', true);
     
-    await mongoose.connect(process.env.MONGODB_URI, {
-        serverSelectionTimeoutMS: 10000, // 10s
-        socketTimeoutMS: 45000,
-    });
-    cachedDb = mongoose.connection;
-    return cachedDb;
+    const uri = process.env.MONGODB_URI;
+    if (!uri) {
+        throw new Error("MONGODB_URI is missing");
+    }
+
+    try {
+        mongoose.set('strictQuery', true);
+        const opts = {
+            serverSelectionTimeoutMS: 15000, // 15s timeout
+            socketTimeoutMS: 45000,
+            connectTimeoutMS: 15000,
+        };
+        
+        await mongoose.connect(uri, opts);
+        cachedDb = mongoose.connection;
+        console.log("New DB connection established");
+        return cachedDb;
+    } catch (e) {
+        console.error("DB Connection Error:", e);
+        throw e;
+    }
 }
 
 // --- 2. SCHEMAS ---
-
 const UserSchema = new mongoose.Schema({
     id: { type: String, required: true, unique: true },
     name: String,
@@ -128,7 +137,6 @@ async function authenticateUser(req) {
 }
 
 // --- 4. API HANDLER ---
-
 export default async function handler(req, res) {
     const origin = req.headers.origin;
     res.setHeader('Access-Control-Allow-Origin', origin || '*');
@@ -257,12 +265,12 @@ export default async function handler(req, res) {
                 await Transaction.create({ id: 'tx_ref_' + Date.now() + '_u', userId, amount: 10, type: 'REFERRAL', description: 'Referral Bonus', date: new Date().toISOString() });
                 await Transaction.create({ id: 'tx_ref_' + Date.now() + '_r', userId: referrerId, amount: 25, type: 'REFERRAL', description: `Referral: ${user.name}`, date: new Date().toISOString() });
 
-                return res.json({ success: true, message: "Referral Success!" });
+                return res.json({ success: true, message: "Success!" });
             }
 
             case 'getAllUsers': 
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required" });
-                return res.json(await User.find({}).limit(100));
+                return res.json(await User.find({}).limit(200));
             case 'getAllWithdrawals': 
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required" });
                 return res.json(await Withdrawal.find({}).sort({date:-1}));

@@ -76,22 +76,22 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isVerifying, setIsVerifying] = useState(true);
 
   useEffect(() => {
-    const checkAdmin = () => {
-      const id = getCurrentUserId();
-      const role = getUserRole();
-      if (!id || role !== UserRole.ADMIN) {
-        navigate('/login', { replace: true });
-      } else {
-        setIsVerifying(false);
-      }
-    };
-    checkAdmin();
+    // Immediate verification check
+    const id = getCurrentUserId();
+    const role = getUserRole();
+    
+    if (!id || role !== UserRole.ADMIN) {
+      console.warn("Unauthorized admin access attempt");
+      navigate('/login', { replace: true });
+    } else {
+      setIsVerifying(false);
+    }
   }, [location.pathname, navigate]);
 
   const handleLogout = () => {
     if(window.confirm('Terminate secure admin session?')) {
       logout();
-      navigate('/login');
+      navigate('/login', { replace: true });
     }
   };
 
@@ -99,7 +99,7 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
     return (
       <div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center space-y-4">
         <Loader2 className="animate-spin text-blue-500" size={40} />
-        <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest animate-pulse">Verifying Admin Privileges</p>
+        <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest animate-pulse">Checking Security Protocol</p>
       </div>
     );
   }
@@ -113,7 +113,7 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
              <ShieldAlert className="text-white" size={24} />
            </div>
            <div>
-             <h2 className="text-xl font-black text-white tracking-tighter uppercase leading-none">Control</h2>
+             <h2 className="text-xl font-black text-white tracking-tighter uppercase leading-none">Admin</h2>
              <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest mt-1.5 opacity-80 italic">Root Authority</p>
            </div>
         </div>
