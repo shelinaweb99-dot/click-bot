@@ -70,7 +70,6 @@ export default async function handler(req, res) {
         await connectToDatabase();
         const { action, ...data } = req.body || {};
 
-        // --- PUBLIC: LOGIN / REGISTER ---
         if (action === 'login' || action === 'register') {
             const { email, password, ...userData } = data;
             if (!email || !password) return res.status(400).json({ message: "Missing credentials" });
@@ -100,7 +99,6 @@ export default async function handler(req, res) {
             return res.json({ ...userObj, token: newToken });
         }
 
-        // --- SECURE: AUTHENTICATED ACTIONS ---
         const currentUser = await authenticateUser(req);
         if (!currentUser) return res.status(401).json({ message: "Session expired" });
         if (currentUser.blocked) return res.status(403).json({ message: "Account restricted" });
@@ -111,29 +109,41 @@ export default async function handler(req, res) {
             case 'getTransactions': return res.json(await Transaction.find({ userId: currentUser.id }).sort({ date: -1 }).limit(50));
             case 'getAnnouncements': return res.json(await Announcement.find({}).sort({ date: -1 }));
             case 'getShorts': return res.json(await Short.find({}));
-            case 'getSettings': return res.json((await Setting.findById(data.key))?.data || {});
+            
+            case 'getSettings': {
+                const doc = await Setting.findById(data.key);
+                return res.json(doc?.data || {});
+            }
 
             case 'completeTask': {
                 const task = await Task.findOne({ id: data.taskId });
-                if (!task) return res.status(404).json({ message: "Task missing" });
+                if (!task) return res.status(404).json({ message: "Task not found in system" });
+                
                 const existing = await Transaction.findOne({ userId: currentUser.id, taskId: data.taskId });
-                if (existing) return res.status(400).json({ message: "Task already completed" });
+                if (existing) return res.status(400).json({ message: "Task reward already claimed" });
 
-                await User.updateOne({ id: currentUser.id }, { $inc: { balance: task.reward } });
-                await Transaction.create({ id: 'tx_' + Date.now(), userId: currentUser.id, amount: task.reward, type: 'EARNING', description: `Task: ${task.title}`, date: new Date().toISOString(), taskId: task.id });
-                return res.json({ success: true });
+                const reward = Number(task.reward);
+                await User.updateOne({ id: currentUser.id }, { $inc: { balance: reward } });
+                await Transaction.create({ 
+                    id: 'tx_' + Date.now(), 
+                    userId: currentUser.id, 
+                    amount: reward, 
+                    type: 'EARNING', 
+                    description: `Task: ${task.title}`, 
+                    date: new Date().toISOString(), 
+                    taskId: task.id 
+                });
+                return res.json({ success: true, reward });
             }
 
             case 'dailyCheckIn': {
                 const today = new Date().toISOString().split('T')[0];
                 if (currentUser.lastDailyCheckIn && currentUser.lastDailyCheckIn.split('T')[0] === today) return res.status(400).json({ message: "Already claimed today" });
                 
-                // Fetch dynamic settings from DB
                 const sysDoc = await Setting.findById('system');
                 const sys = sysDoc?.data || {};
-                const baseReward = sys.dailyRewardBase || 10;
-                const bonusPerDay = sys.dailyRewardStreakBonus || 2;
-                
+                const baseReward = Number(sys.dailyRewardBase || 10);
+                const bonusPerDay = Number(sys.dailyRewardStreakBonus || 2);
                 const reward = baseReward + (Math.min(currentUser.dailyStreak || 0, 7) * bonusPerDay);
                 
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: reward }, $set: { lastDailyCheckIn: new Date().toISOString(), dailyStreak: (currentUser.dailyStreak || 0) + 1 } });
@@ -143,11 +153,9 @@ export default async function handler(req, res) {
 
             case 'playMiniGame': {
                 const gameType = data.gameType;
-                // Fetch dynamic game settings
                 const gamesDoc = await Setting.findById('games');
                 const games = gamesDoc?.data || {};
                 const config = games[gameType] || { isEnabled: true, minReward: 1, maxReward: 10 };
-                
                 const reward = Math.floor(Math.random() * (config.maxReward - config.minReward + 1)) + config.minReward;
                 
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: reward } });
@@ -158,17 +166,14 @@ export default async function handler(req, res) {
             case 'createWithdrawal': {
                 const amount = Number(data.request.amount);
                 if (currentUser.balance < amount) return res.status(400).json({ message: "Insufficient balance" });
-                
                 await Withdrawal.create(data.request);
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: -amount } });
                 await Transaction.create({ id: 'tx_w_' + Date.now(), userId: currentUser.id, amount, type: 'WITHDRAWAL', description: 'Withdrawal Request', date: new Date().toISOString() });
                 return res.json({ success: true });
             }
 
-            // --- ADMIN ACTIONS (Persistence Fixes) ---
             case 'saveTask':
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();
-                // Ensure id is used for lookup correctly
                 await Task.findOneAndUpdate({ id: data.payload.id }, { $set: data.payload }, { upsert: true, new: true });
                 return res.json({ success: true });
 
@@ -179,7 +184,8 @@ export default async function handler(req, res) {
 
             case 'saveSettings':
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();
-                await Setting.findOneAndUpdate({ _id: data.key }, { $set: { _id: data.key, data: data.payload } }, { upsert: true, new: true });
+                // Store settings strictly in the 'data' field
+                await Setting.findOneAndUpdate({ _id: data.key }, { $set: { data: data.payload } }, { upsert: true, new: true });
                 return res.json({ success: true });
 
             case 'addShort':

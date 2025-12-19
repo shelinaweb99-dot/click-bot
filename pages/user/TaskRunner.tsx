@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Task, TaskType, AdSettings } from '../../types';
 import { getTasks, verifyAndCompleteTask, getCurrentUserId, getAdSettings, extractYouTubeId, fetchYouTubeMetadata } from '../../services/mockDb';
-import { Timer, ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Volume2, VolumeX } from 'lucide-react';
+import { Timer, ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, ExternalLink } from 'lucide-react';
 import { AdSimulator } from '../../components/AdSimulator';
 import { YouTubePlayer } from '../../components/YouTubePlayer';
 
@@ -52,6 +52,13 @@ export const TaskRunner: React.FC = () => {
     return () => clearInterval(interval);
   }, [isTimerRunning, timeLeft]);
 
+  const handleStartTask = () => {
+    setIsTimerRunning(true);
+    if (task?.url && task.type === TaskType.WEBSITE) {
+      window.open(task.url, '_blank');
+    }
+  };
+
   const handleAdComplete = () => {
     setShowAd(false);
     completeTask();
@@ -65,10 +72,9 @@ export const TaskRunner: React.FC = () => {
         const result = await verifyAndCompleteTask(userId, task.id);
         if (result.success) {
             setIsCompleted(true);
-            // TRIGGER GLOBAL REFRESH
             window.dispatchEvent(new Event('db_change'));
         } else {
-            alert(result.message || "Failed to complete task.");
+            alert(result.message || "Verification failed. Ensure you stayed on page.");
         }
     } catch (e) {
         alert("Server error. Please try again.");
@@ -79,7 +85,7 @@ export const TaskRunner: React.FC = () => {
       return (
           <div className="flex flex-col items-center justify-center min-h-screen text-white space-y-4">
               <Loader2 className="animate-spin text-blue-500" size={40} />
-              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Initializing Task Environment</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Initializing Environment</p>
           </div>
       );
   }
@@ -92,13 +98,13 @@ export const TaskRunner: React.FC = () => {
               </div>
               <div>
                   <h2 className="text-3xl font-black text-white tracking-tight">Mission Success!</h2>
-                  <p className="text-gray-500 text-sm mt-1 font-medium">+{task.reward} USDT credited to wallet.</p>
+                  <p className="text-gray-500 text-sm mt-1 font-medium">+{task.reward} USDT-Pts added to wallet.</p>
               </div>
               <button 
                 onClick={() => navigate('/tasks')} 
                 className="bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-[0.2em] py-4 px-10 rounded-2xl shadow-xl shadow-blue-600/10 transition-all active:scale-95"
               >
-                  Next Task
+                  Earn More
               </button>
           </div>
       );
@@ -113,7 +119,7 @@ export const TaskRunner: React.FC = () => {
       <div className="glass-card p-6 rounded-[2rem] flex justify-between items-center border border-white/5 shadow-xl">
           <div className="min-w-0 pr-4">
             <h2 className="text-sm font-black text-white line-clamp-1 uppercase tracking-tight">{task.title}</h2>
-            <p className="text-[10px] text-blue-400 font-black uppercase tracking-widest mt-1">Reward: {task.reward} USDT</p>
+            <p className="text-[10px] text-blue-400 font-black uppercase tracking-widest mt-1">Reward: {task.reward} USDT-Pts</p>
           </div>
           {task.type !== TaskType.CUSTOM && task.type !== TaskType.TELEGRAM && (
             <div className={`flex items-center gap-2 font-mono text-2xl font-black tabular-nums ${timeLeft === 0 ? 'text-green-500' : 'text-blue-500'}`}>
@@ -122,56 +128,59 @@ export const TaskRunner: React.FC = () => {
           )}
       </div>
 
-      <div className="flex-1 bg-[#030712] rounded-[2.5rem] overflow-hidden border border-white/5 relative flex flex-col min-h-[50vh] shadow-inner shadow-black/50">
+      <div className="flex-1 bg-[#030712] rounded-[2.5rem] overflow-hidden border border-white/5 relative flex flex-col min-h-[50vh] shadow-inner shadow-black/50 items-center justify-center">
+          
+          {/* Action Overlay for YouTube and Website */}
           {!isTimerRunning && timeLeft > 0 && task.type !== TaskType.CUSTOM && task.type !== TaskType.TELEGRAM && (
-              <div className="absolute inset-0 bg-[#030712]/90 z-10 flex flex-col items-center justify-center p-8 text-center backdrop-blur-sm">
-                  <div className="bg-blue-600/10 p-5 rounded-full mb-6 border border-blue-500/20">
-                    <PlayCircle size={48} className="text-blue-500" />
+              <div className="absolute inset-0 bg-[#030712]/95 z-40 flex flex-col items-center justify-center p-8 text-center backdrop-blur-md">
+                  <div className="bg-blue-600/10 p-6 rounded-full mb-6 border border-blue-500/20">
+                    {task.type === TaskType.YOUTUBE ? <PlayCircle size={48} className="text-blue-500" /> : <Globe size={48} className="text-blue-500" />}
                   </div>
-                  <h3 className="text-xl font-black text-white mb-2">Ready for Action?</h3>
-                  <p className="text-gray-500 text-xs mb-8 font-medium">Keep the window active and watch until the timer reaches zero to claim USDT.</p>
-                  <button onClick={() => setIsTimerRunning(true)} className="w-full max-w-xs bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-2xl shadow-xl shadow-blue-600/20 transition-all active:scale-95">
-                      START MISSION
+                  <h3 className="text-xl font-black text-white mb-2">{task.type === TaskType.YOUTUBE ? 'Ready to Watch?' : 'Ready to Visit?'}</h3>
+                  <p className="text-gray-500 text-xs mb-8 font-medium">Keep the bot open while you visit the destination. Points will be credited after the timer.</p>
+                  <button onClick={handleStartTask} className="w-full max-w-xs bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-2xl shadow-xl shadow-blue-600/20 transition-all active:scale-95">
+                      {task.type === TaskType.YOUTUBE ? 'WATCH VIDEO' : 'VISIT WEBSITE'}
                   </button>
               </div>
           )}
 
           {task.type === TaskType.YOUTUBE && (
-              <div className="flex flex-col h-full bg-black">
-                  <div className="relative w-full aspect-video bg-black flex items-center justify-center">
-                      <YouTubePlayer
-                          videoId={extractYouTubeId(task.url || '') || ''}
-                          autoplay={isTimerRunning}
-                          muted={false} 
-                          controls={true}
-                          className="w-full h-full"
-                      />
-                  </div>
-                  <div className="p-6 bg-[#030712] flex-1">
-                      <h3 className="text-white font-bold text-sm leading-snug">{videoMetadata?.title || 'Synchronizing Stream...'}</h3>
-                      <div className="flex items-center gap-2 mt-4 text-[10px] font-black text-gray-600 uppercase tracking-widest">
-                          <Timer size={14} className="text-blue-500" /> Do not close this page
-                      </div>
-                  </div>
+              <div className="w-full h-full bg-black">
+                  <YouTubePlayer
+                      videoId={extractYouTubeId(task.url || '') || ''}
+                      autoplay={isTimerRunning}
+                      className="w-full h-full"
+                  />
               </div>
           )}
           
           {task.type === TaskType.WEBSITE && (
-              <iframe src={task.url} className="w-full flex-1 bg-white" title="task-frame" />
+              <div className="flex flex-col items-center justify-center p-10 text-center space-y-6">
+                  <Globe size={64} className="text-blue-500 opacity-20" />
+                  <div className="space-y-2">
+                    <p className="text-white font-black text-xl">Site Visit in Progress</p>
+                    <p className="text-gray-500 text-xs">Stay on the website for the full duration. Don't close this bot window.</p>
+                  </div>
+                  {isTimerRunning && (
+                    <button onClick={() => window.open(task.url, '_blank')} className="flex items-center gap-2 text-blue-500 text-xs font-bold uppercase tracking-widest border border-blue-500/20 px-4 py-2 rounded-full">
+                        Return to Website <ExternalLink size={14} />
+                    </button>
+                  )}
+              </div>
           )}
 
           {task.type === TaskType.TELEGRAM && (
               <div className="flex flex-col items-center justify-center h-full p-10 text-center space-y-8">
-                  <div className="bg-blue-500/10 p-8 rounded-full border border-blue-500/20 shadow-2xl shadow-blue-500/5">
+                  <div className="bg-blue-500/10 p-8 rounded-full border border-blue-500/20">
                       <Send size={64} className="text-blue-500" />
                   </div>
                   <div>
-                      <h3 className="text-2xl font-black text-white">Community Protocol</h3>
-                      <p className="text-gray-500 text-xs mt-2 font-medium">Join our official channel to proceed with the reward verification.</p>
+                      <h3 className="text-2xl font-black text-white">Join Community</h3>
+                      <p className="text-gray-500 text-xs mt-2 font-medium">Click below to join our official channel and unlock your reward.</p>
                   </div>
                   <div className="w-full space-y-3">
-                    <button onClick={() => window.open(task.url, '_blank')} className="w-full bg-blue-600 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-2xl shadow-lg active:scale-95 transition-all">OPEN TELEGRAM</button>
-                    <button onClick={() => setShowAd(true)} className="w-full bg-white/5 hover:bg-white/10 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-2xl border border-white/5 transition-all">I HAVE JOINED</button>
+                    <button onClick={() => window.open(task.url, '_blank')} className="w-full bg-blue-600 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-2xl shadow-lg active:scale-95 transition-all">JOIN CHANNEL</button>
+                    <button onClick={() => setShowAd(true)} className="w-full bg-white/5 hover:bg-white/10 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-2xl border border-white/5 transition-all">VERIFY JOIN</button>
                   </div>
               </div>
           )}
