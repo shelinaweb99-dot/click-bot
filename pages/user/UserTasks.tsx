@@ -104,12 +104,12 @@ export const UserTasks: React.FC = () => {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold text-white">Available Tasks</h2>
+    <div className="space-y-4 animate-in fade-in duration-500">
+      <div className="flex justify-between items-center mb-4 px-1">
+          <h2 className="text-xl font-black text-white uppercase tracking-tight">Available Tasks</h2>
           <button 
             onClick={fetchTasks} 
-            className={`p-2 rounded-full hover:bg-gray-700 text-gray-400 hover:text-white transition ${loading ? 'animate-spin' : ''}`}
+            className={`p-2 rounded-xl hover:bg-gray-800 text-gray-500 hover:text-white transition ${loading ? 'animate-spin' : ''}`}
             title="Refresh Tasks"
           >
               <RefreshCw size={20} />
@@ -117,42 +117,42 @@ export const UserTasks: React.FC = () => {
       </div>
       
       {tasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 text-center bg-gray-800 rounded-xl border border-gray-700">
-              <Clock size={40} className="text-gray-600 mb-4" />
-              <p className="text-gray-400 mb-2">{loading ? 'Loading tasks...' : 'No active tasks available.'}</p>
-              <p className="text-xs text-gray-500 max-w-xs mx-auto">
-                  Tasks reappear 24 hours after completion. Check back later!
+          <div className="flex flex-col items-center justify-center py-16 text-center bg-gray-900/40 rounded-3xl border border-white/5 backdrop-blur-sm">
+              <Clock size={40} className="text-gray-700 mb-4" />
+              <p className="text-gray-500 font-bold mb-2">No active missions</p>
+              <p className="text-[10px] text-gray-600 max-w-[200px] mx-auto uppercase tracking-widest font-bold">
+                  Tasks reset every 24 hours. Check back later!
               </p>
               <button 
                 onClick={fetchTasks}
-                className="text-blue-400 text-sm hover:underline mt-4"
+                className="text-blue-500 text-xs font-black uppercase tracking-widest mt-6 hover:underline"
               >
-                Tap to Refresh
+                Tap to Sync
               </button>
           </div>
       ) : (
         tasks.map(task => (
-            <div key={task.id} className="bg-gray-800 rounded-xl p-4 border border-gray-700 hover:border-blue-500 transition cursor-pointer" onClick={() => navigate(`/tasks/${task.id}`)}>
+            <div key={task.id} className="glass-card rounded-3xl p-5 border border-white/5 hover:border-blue-500/30 transition-all cursor-pointer group" onClick={() => navigate(`/tasks/${task.id}`)}>
                 <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-gray-700 p-3 rounded-full">
+                    <div className="flex items-center gap-4">
+                        <div className="bg-gray-900 p-3.5 rounded-2xl border border-white/5 text-blue-400 group-hover:scale-110 transition-transform">
                             {getIcon(task.type)}
                         </div>
                         <div>
-                            <h3 className="text-white font-bold line-clamp-1">{task.title}</h3>
-                            <p className="text-gray-400 text-xs mt-1">
-                                {task.type === TaskType.CUSTOM ? 'Complete Job' : 
-                                 task.type === TaskType.TELEGRAM ? 'Join & Earn' :
-                                 `Watch for ${task.durationSeconds}s`}
+                            <h3 className="text-white font-bold text-sm line-clamp-1">{task.title}</h3>
+                            <p className="text-gray-500 text-[10px] mt-1 font-bold uppercase tracking-wider">
+                                {task.type === TaskType.CUSTOM ? 'Manual Review' : 
+                                 task.type === TaskType.TELEGRAM ? 'Community Join' :
+                                 `Verify in ${task.durationSeconds}s`}
                             </p>
                         </div>
                     </div>
-                    <div className="bg-blue-600/20 text-blue-400 px-3 py-1 rounded-full text-sm font-bold whitespace-nowrap">
-                        +{task.reward} Pts
+                    <div className="bg-blue-600/10 text-blue-400 px-4 py-1.5 rounded-full text-xs font-black whitespace-nowrap border border-blue-500/10 shadow-sm">
+                        +{task.reward} USDT
                     </div>
                 </div>
-                <button className="w-full mt-4 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2">
-                    {getActionText(task.type)} <PlayCircle size={16} />
+                <button className="w-full mt-5 bg-blue-600/5 hover:bg-blue-600 hover:text-white text-blue-500 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-blue-500/10">
+                    {getActionText(task.type)} <PlayCircle size={14} />
                 </button>
             </div>
         ))

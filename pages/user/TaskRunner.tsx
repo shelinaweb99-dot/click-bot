@@ -79,47 +79,59 @@ export const TaskRunner: React.FC = () => {
       return (
           <div className="flex flex-col items-center justify-center min-h-screen text-white space-y-4">
               <Loader2 className="animate-spin text-blue-500" size={40} />
-              <p>Loading Task...</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Initializing Task Environment</p>
           </div>
       );
   }
 
   if (isCompleted) {
       return (
-          <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-4 animate-in fade-in zoom-in duration-300">
-              <CheckCircle className="w-20 h-20 text-green-500" />
-              <h2 className="text-2xl font-bold text-white">Success!</h2>
-              <p className="text-gray-400">+{task.reward} points claimed.</p>
-              <button onClick={() => navigate('/tasks')} className="bg-blue-600 px-6 py-2 rounded-lg text-white font-bold mt-4">
-                  Continue Earning
+          <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6 animate-in fade-in zoom-in duration-500">
+              <div className="w-24 h-24 bg-green-500/10 rounded-full flex items-center justify-center border border-green-500/20 shadow-2xl shadow-green-500/10">
+                  <CheckCircle className="w-12 h-12 text-green-500" />
+              </div>
+              <div>
+                  <h2 className="text-3xl font-black text-white tracking-tight">Mission Success!</h2>
+                  <p className="text-gray-500 text-sm mt-1 font-medium">+{task.reward} USDT credited to wallet.</p>
+              </div>
+              <button 
+                onClick={() => navigate('/tasks')} 
+                className="bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-[0.2em] py-4 px-10 rounded-2xl shadow-xl shadow-blue-600/10 transition-all active:scale-95"
+              >
+                  Next Task
               </button>
           </div>
       );
   }
 
   return (
-    <div className="flex flex-col h-full gap-4 pb-20">
-      <button onClick={() => navigate('/tasks')} className="text-gray-400 hover:text-white flex items-center gap-2">
-        <ArrowLeft size={16} /> Back
+    <div className="flex flex-col h-full gap-5 pb-20 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <button onClick={() => navigate('/tasks')} className="text-gray-500 hover:text-white flex items-center gap-2 font-bold text-xs uppercase tracking-widest transition-colors w-fit">
+        <ArrowLeft size={14} /> Mission Control
       </button>
 
-      <div className="bg-gray-800 p-4 rounded-xl flex justify-between items-center border border-gray-700">
-          <div>
-            <h2 className="text-lg font-bold text-white line-clamp-1">{task.title}</h2>
-            <p className="text-sm text-blue-400 font-bold">Reward: {task.reward} Pts</p>
+      <div className="glass-card p-6 rounded-[2rem] flex justify-between items-center border border-white/5 shadow-xl">
+          <div className="min-w-0 pr-4">
+            <h2 className="text-sm font-black text-white line-clamp-1 uppercase tracking-tight">{task.title}</h2>
+            <p className="text-[10px] text-blue-400 font-black uppercase tracking-widest mt-1">Reward: {task.reward} USDT</p>
           </div>
           {task.type !== TaskType.CUSTOM && task.type !== TaskType.TELEGRAM && (
-            <div className={`flex items-center gap-2 font-mono text-xl font-bold ${timeLeft === 0 ? 'text-green-500' : 'text-yellow-500'}`}>
+            <div className={`flex items-center gap-2 font-mono text-2xl font-black tabular-nums ${timeLeft === 0 ? 'text-green-500' : 'text-blue-500'}`}>
                 {timeLeft}s
             </div>
           )}
       </div>
 
-      <div className="flex-1 bg-gray-900 rounded-xl overflow-hidden border border-gray-700 relative flex flex-col min-h-[50vh]">
+      <div className="flex-1 bg-[#030712] rounded-[2.5rem] overflow-hidden border border-white/5 relative flex flex-col min-h-[50vh] shadow-inner shadow-black/50">
           {!isTimerRunning && timeLeft > 0 && task.type !== TaskType.CUSTOM && task.type !== TaskType.TELEGRAM && (
-              <div className="absolute inset-0 bg-black/80 z-10 flex flex-col items-center justify-center p-6 text-center">
-                  <button onClick={() => setIsTimerRunning(true)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full shadow-lg flex items-center gap-2">
-                      <PlayCircle size={20} /> START TASK
+              <div className="absolute inset-0 bg-[#030712]/90 z-10 flex flex-col items-center justify-center p-8 text-center backdrop-blur-sm">
+                  <div className="bg-blue-600/10 p-5 rounded-full mb-6 border border-blue-500/20">
+                    <PlayCircle size={48} className="text-blue-500" />
+                  </div>
+                  <h3 className="text-xl font-black text-white mb-2">Ready for Action?</h3>
+                  <p className="text-gray-500 text-xs mb-8 font-medium">Keep the window active and watch until the timer reaches zero to claim USDT.</p>
+                  <button onClick={() => setIsTimerRunning(true)} className="w-full max-w-xs bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-2xl shadow-xl shadow-blue-600/20 transition-all active:scale-95">
+                      START MISSION
                   </button>
               </div>
           )}
@@ -135,9 +147,11 @@ export const TaskRunner: React.FC = () => {
                           className="w-full h-full"
                       />
                   </div>
-                  <div className="p-4 bg-gray-800 flex-1">
-                      <h3 className="text-white font-bold">{videoMetadata?.title || 'Loading Video...'}</h3>
-                      <p className="text-gray-400 text-xs mt-1 italic">Keep this page open until the timer ends.</p>
+                  <div className="p-6 bg-[#030712] flex-1">
+                      <h3 className="text-white font-bold text-sm leading-snug">{videoMetadata?.title || 'Synchronizing Stream...'}</h3>
+                      <div className="flex items-center gap-2 mt-4 text-[10px] font-black text-gray-600 uppercase tracking-widest">
+                          <Timer size={14} className="text-blue-500" /> Do not close this page
+                      </div>
                   </div>
               </div>
           )}
@@ -147,13 +161,18 @@ export const TaskRunner: React.FC = () => {
           )}
 
           {task.type === TaskType.TELEGRAM && (
-              <div className="flex flex-col items-center justify-center h-full p-8 text-center space-y-6">
-                  <div className="bg-blue-500/20 p-6 rounded-full">
+              <div className="flex flex-col items-center justify-center h-full p-10 text-center space-y-8">
+                  <div className="bg-blue-500/10 p-8 rounded-full border border-blue-500/20 shadow-2xl shadow-blue-500/5">
                       <Send size={64} className="text-blue-500" />
                   </div>
-                  <h3 className="text-2xl font-bold text-white">Join Channel</h3>
-                  <button onClick={() => window.open(task.url, '_blank')} className="w-full max-w-xs bg-blue-500 text-white font-bold py-4 rounded-xl">OPEN TELEGRAM</button>
-                  <button onClick={() => setShowAd(true)} className="w-full max-w-xs bg-gray-700 text-white font-bold py-3 rounded-xl">I HAVE JOINED</button>
+                  <div>
+                      <h3 className="text-2xl font-black text-white">Community Protocol</h3>
+                      <p className="text-gray-500 text-xs mt-2 font-medium">Join our official channel to proceed with the reward verification.</p>
+                  </div>
+                  <div className="w-full space-y-3">
+                    <button onClick={() => window.open(task.url, '_blank')} className="w-full bg-blue-600 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-2xl shadow-lg active:scale-95 transition-all">OPEN TELEGRAM</button>
+                    <button onClick={() => setShowAd(true)} className="w-full bg-white/5 hover:bg-white/10 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-2xl border border-white/5 transition-all">I HAVE JOINED</button>
+                  </div>
               </div>
           )}
       </div>
