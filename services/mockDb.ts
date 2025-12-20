@@ -36,7 +36,7 @@ const apiCall = async (action: string, data: any = {}, useCache = false) => {
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); 
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // Increased to 30s for Cold Starts
     try {
         const token = getAuthToken();
         const tgData = (window as any).Telegram?.WebApp?.initData || '';
@@ -66,14 +66,13 @@ const apiCall = async (action: string, data: any = {}, useCache = false) => {
         return json;
     } catch (e: any) {
         clearTimeout(timeoutId);
-        if (e.name === 'AbortError') throw new Error("Connection timed out. Retrying...");
+        if (e.name === 'AbortError') throw new Error("Connection timed out. Please check your internet or retry.");
         throw e;
     }
 };
 
 // Background pre-warmer
 export const initMockData = () => {
-    // Warm up settings and user data
     if (getAuthToken()) {
         getUserById(getUserId() || '');
         getTasks();
@@ -103,7 +102,8 @@ export const getUserById = async (id: string) => apiCall('getUser', {}, true);
 
 export const saveUser = async (user: User) => {
     const res = await apiCall('saveUser', { user });
-    setCache(`getUser_{}`, user); // Optimistic cache update
+    setCache(`getUser_{}`, user); 
+    window.dispatchEvent(new Event('db_change'));
     return res;
 };
 
@@ -111,23 +111,38 @@ export const getTasks = async (): Promise<Task[]> => apiCall('getTasks', {}, tru
 
 export const verifyAndCompleteTask = async (userId: string, taskId: string) => {
     const res = await apiCall('completeTask', { taskId });
-    // Invalidate caches
     delete _cache[`getTasks_{}`];
     delete _cache[`getUser_{}`];
+    window.dispatchEvent(new Event('db_change'));
     return res;
 };
 
 export const claimDailyReward = async (userId: string) => {
     const res = await apiCall('dailyCheckIn');
     delete _cache[`getUser_{}`];
+    window.dispatchEvent(new Event('db_change'));
     return res;
 };
 
-export const playMiniGame = async (userId: string, gameType: string) => apiCall('playMiniGame', { gameType });
+export const playMiniGame = async (userId: string, gameType: string) => {
+    const res = await apiCall('playMiniGame', { gameType });
+    delete _cache[`getUser_{}`];
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+}
+
 export const getTransactions = async (userId: string): Promise<Transaction[]> => apiCall('getTransactions', {}, true);
-export const createWithdrawal = async (req: WithdrawalRequest) => apiCall('createWithdrawal', { request: req });
+export const createWithdrawal = async (req: WithdrawalRequest) => {
+    const res = await apiCall('createWithdrawal', { request: req });
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+}
 export const getWithdrawals = async (): Promise<WithdrawalRequest[]> => apiCall('getAllWithdrawals', {}, true);
-export const updateWithdrawalStatus = async (id: string, status: string) => apiCall('updateWithdrawal', { id, status });
+export const updateWithdrawalStatus = async (id: string, status: string) => {
+    const res = await apiCall('updateWithdrawal', { id, status });
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+}
 
 const getSetting = async (key: string, defaultVal: any) => {
     try {
@@ -139,7 +154,12 @@ const getSetting = async (key: string, defaultVal: any) => {
 export const triggerHoneypot = () => apiCall('triggerHoneypot');
 
 export const getSystemSettings = async (): Promise<SystemSettings> => getSetting('system', { minWithdrawal: 50, pointsPerDollar: 1000 });
-export const saveSystemSettings = async (s: SystemSettings) => apiCall('saveSettings', { key: 'system', payload: s });
+export const saveSystemSettings = async (s: SystemSettings) => {
+    const res = await apiCall('saveSettings', { key: 'system', payload: s });
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+}
+
 export const getAdSettings = async (): Promise<AdSettings> => getSetting('ads', {});
 export const saveAdSettings = async (s: AdSettings) => apiCall('saveSettings', { key: 'ads', payload: s });
 export const getGameSettings = async (): Promise<GameSettings> => getSetting('games', { spin: { isEnabled: true }});
@@ -148,13 +168,37 @@ export const getShortsSettings = async (): Promise<ShortsSettings> => getSetting
 export const saveShortsSettings = async (s: ShortsSettings) => apiCall('saveSettings', { key: 'shorts', payload: s });
 
 export const getShorts = async (): Promise<ShortVideo[]> => apiCall('getShorts', {}, true);
-export const addShort = async (url: string) => apiCall('addShort', { url });
-export const deleteShort = async (id: string) => apiCall('deleteShort', { id });
+export const addShort = async (url: string) => {
+    const res = await apiCall('addShort', { url });
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+}
+export const deleteShort = async (id: string) => {
+    const res = await apiCall('deleteShort', { id });
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+}
 export const getAnnouncements = async (): Promise<Announcement[]> => apiCall('getAnnouncements', {}, true);
-export const addAnnouncement = async (a: any) => apiCall('addAnnouncement', { payload: a });
-export const deleteAnnouncement = async (id: string) => apiCall('deleteAnnouncement', { id });
-export const saveTask = async (task: Task) => apiCall('saveTask', { payload: task });
-export const deleteTask = async (id: string) => apiCall('deleteTask', { id });
+export const addAnnouncement = async (a: any) => {
+    const res = await apiCall('addAnnouncement', { payload: a });
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+}
+export const deleteAnnouncement = async (id: string) => {
+    const res = await apiCall('deleteAnnouncement', { id });
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+}
+export const saveTask = async (task: Task) => {
+    const res = await apiCall('saveTask', { payload: task });
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+}
+export const deleteTask = async (id: string) => {
+    const res = await apiCall('deleteTask', { id });
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+}
 
 export const subscribeToChanges = (cb: () => void) => {
     window.addEventListener('db_change', cb);
@@ -163,11 +207,15 @@ export const subscribeToChanges = (cb: () => void) => {
 
 export const getLeaderboard = async () => {
     const users = await apiCall('getAllUsers', {}, true);
-    return Array.isArray(users) ? users.sort((a: any, b: any) => b.balance - a.balance).slice(0, 10) : [];
+    return Array.isArray(users) ? users.sort((a: any, b: any) => (b.balance || 0) - (a.balance || 0)).slice(0, 10) : [];
 };
 
 export const getUsers = async () => apiCall('getAllUsers', {}, true);
-export const processReferral = async (userId: string, code: string) => apiCall('processReferral', { userId, code });
+export const processReferral = async (userId: string, code: string) => {
+    const res = await apiCall('processReferral', { userId, code });
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+}
 
 export const getPaymentMethods = async (): Promise<WithdrawalMethod[]> => {
     const data = await apiCall('getSettings', { key: 'payment_methods' }, true);
@@ -178,8 +226,10 @@ export const getPaymentMethods = async (): Promise<WithdrawalMethod[]> => {
 };
 
 export const updateAllPaymentMethods = async (methods: WithdrawalMethod[]) => {
-    return apiCall('saveSettings', { key: 'payment_methods', payload: { methods } });
-};
+    const res = await apiCall('saveSettings', { key: 'payment_methods', payload: { methods } });
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+}
 
 export const savePaymentMethod = async (method: WithdrawalMethod) => {
     const current = await getPaymentMethods();
@@ -200,8 +250,16 @@ export const deletePaymentMethod = async (id: string) => {
     return updateAllPaymentMethods(updated);
 };
 
-export const recordShortView = async (u: string, v: string) => apiCall('completeShort', { videoId: v });
-export const recordAdReward = async (u: string) => apiCall('completeAd');
+export const recordShortView = async (u: string, v: string) => {
+    const res = await apiCall('completeShort', { videoId: v });
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+}
+export const recordAdReward = async (u: string) => {
+    const res = await apiCall('completeAd');
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+}
 
 export const getRotatedLink = async (): Promise<string | null> => {
     const settings = await getAdSettings();
