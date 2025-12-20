@@ -12,43 +12,64 @@ async function connectToDatabase() {
     if (!uri) throw new Error("MONGODB_URI is missing");
     try {
         mongoose.set('strictQuery', true);
-        await mongoose.connect(uri, { 
-            serverSelectionTimeoutMS: 15000,
-            socketTimeoutMS: 45000 
-        });
+        const opts = {
+            serverSelectionTimeoutMS: 20000,
+            socketTimeoutMS: 45000,
+            connectTimeoutMS: 20000,
+        };
+        await mongoose.connect(uri, opts);
         cachedDb = mongoose.connection;
+        console.log("DB Connected");
         return cachedDb;
     } catch (e) {
         console.error("DB Connection Error:", e);
-        throw new Error("Database connectivity lost.");
+        throw new Error("Critical: Database connection failed.");
     }
 }
 
 // --- 2. MODELS ---
 const UserSchema = new mongoose.Schema({
-    id: { type: String, required: true, unique: true },
+    id: { type: String, required: true, unique: true, index: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, select: false },
     sessionToken: { type: String, select: false },
     role: { type: String, default: 'USER' },
     balance: { type: Number, default: 0 },
     blocked: { type: Boolean, default: false },
-    referredBy: String,
-    referralCount: { type: Number, default: 0 },
-    referralEarnings: { type: Number, default: 0 },
     lastDailyCheckIn: String,
     dailyStreak: { type: Number, default: 0 },
-    gameStats: { type: Object, default: {} },
     ipAddress: String
 }, { minimize: false, strict: false });
 
-const Task = mongoose.models.Task || mongoose.model('Task', new mongoose.Schema({ id: String }, { strict: false }));
-const Transaction = mongoose.models.Transaction || mongoose.model('Transaction', new mongoose.Schema({ id: String }, { strict: false }));
+const TaskSchema = new mongoose.Schema({
+    id: { type: String, required: true, unique: true, index: true },
+    title: String,
+    reward: Number,
+    type: String,
+    status: { type: String, default: 'ACTIVE' }
+}, { strict: false });
+
+const TransactionSchema = new mongoose.Schema({
+    id: { type: String, required: true, unique: true },
+    userId: { type: String, index: true },
+    taskId: { type: String, index: true },
+    amount: Number,
+    type: String,
+    date: String
+}, { strict: false });
+
+const SettingSchema = new mongoose.Schema({
+    _id: String,
+    data: Object
+}, { strict: false });
+
+const User = mongoose.models.User || mongoose.model('User', UserSchema);
+const Task = mongoose.models.Task || mongoose.model('Task', TaskSchema);
+const Transaction = mongoose.models.Transaction || mongoose.model('Transaction', TransactionSchema);
+const Setting = mongoose.models.Setting || mongoose.model('Setting', SettingSchema);
 const Withdrawal = mongoose.models.Withdrawal || mongoose.model('Withdrawal', new mongoose.Schema({ id: String }, { strict: false }));
-const Setting = mongoose.models.Setting || mongoose.model('Setting', new mongoose.Schema({ _id: String, data: Object }, { strict: false }));
 const Short = mongoose.models.Short || mongoose.model('Short', new mongoose.Schema({ id: String }, { strict: false }));
 const Announcement = mongoose.models.Announcement || mongoose.model('Announcement', new mongoose.Schema({ id: String }, { strict: false }));
-const User = mongoose.models.User || mongoose.model('User', UserSchema);
 
 // --- 3. AUTHENTICATION ---
 async function authenticateUser(req) {
@@ -60,9 +81,11 @@ async function authenticateUser(req) {
 
 // --- 4. GLOBAL HANDLER ---
 export default async function handler(req, res) {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    const origin = req.headers.origin;
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Telegram-Init-Data');
 
     if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -72,13 +95,13 @@ export default async function handler(req, res) {
 
         if (action === 'login' || action === 'register') {
             const { email, password, ...userData } = data;
-            if (!email || !password) return res.status(400).json({ message: "Missing credentials" });
+            if (!email || !password) return res.status(400).json({ message: "Email and password are required." });
 
             let user = await User.findOne({ email: email.toLowerCase() }).select('+password');
             const newToken = crypto.randomBytes(32).toString('hex');
 
             if (!user) {
-                if (action === 'login') return res.status(404).json({ message: "User not found" });
+                if (action === 'login') return res.status(404).json({ message: "Account not found." });
                 const hashedPassword = await bcrypt.hash(password, 10);
                 user = await User.create({
                     id: 'u_' + Date.now(),
@@ -90,7 +113,7 @@ export default async function handler(req, res) {
                     ...userData
                 });
             } else {
-                if (!(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: "Invalid credentials" });
+                if (!(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: "Invalid credentials." });
                 user.sessionToken = newToken;
                 await user.save();
             }
@@ -100,12 +123,12 @@ export default async function handler(req, res) {
         }
 
         const currentUser = await authenticateUser(req);
-        if (!currentUser) return res.status(401).json({ message: "Session expired" });
-        if (currentUser.blocked) return res.status(403).json({ message: "Account restricted" });
+        if (!currentUser) return res.status(401).json({ message: "Session expired. Please login again." });
+        if (currentUser.blocked) return res.status(403).json({ message: "Access restricted by administrator." });
 
         switch (action) {
             case 'getUser': return res.json(currentUser);
-            case 'getTasks': return res.json(await Task.find({}));
+            case 'getTasks': return res.json(await Task.find({ status: 'ACTIVE' }));
             case 'getTransactions': return res.json(await Transaction.find({ userId: currentUser.id }).sort({ date: -1 }).limit(50));
             case 'getAnnouncements': return res.json(await Announcement.find({}).sort({ date: -1 }));
             case 'getShorts': return res.json(await Short.find({}));
@@ -117,103 +140,71 @@ export default async function handler(req, res) {
 
             case 'completeTask': {
                 const task = await Task.findOne({ id: data.taskId });
-                if (!task) return res.status(404).json({ message: "Task not found" });
+                if (!task) return res.status(404).json({ message: "Task was removed by admin." });
                 
                 const existing = await Transaction.findOne({ userId: currentUser.id, taskId: data.taskId });
-                if (existing) return res.status(400).json({ message: "Already completed" });
+                if (existing) return res.status(400).json({ message: "Task already completed today." });
 
-                const reward = Number(task.reward);
-                // Atomic increment to ensure no double-spending/lost points
+                const reward = Number(task.reward) || 0;
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: reward } });
                 await Transaction.create({ 
                     id: 'tx_' + Date.now(), 
                     userId: currentUser.id, 
                     amount: reward, 
                     type: 'EARNING', 
-                    description: `Task: ${task.title}`, 
+                    description: `Mission: ${task.title}`, 
                     date: new Date().toISOString(), 
                     taskId: task.id 
                 });
                 return res.json({ success: true, reward });
             }
 
-            case 'dailyCheckIn': {
-                const today = new Date().toISOString().split('T')[0];
-                if (currentUser.lastDailyCheckIn && currentUser.lastDailyCheckIn.split('T')[0] === today) return res.status(400).json({ message: "Already claimed today" });
-                
-                const sysDoc = await Setting.findById('system');
-                const sys = sysDoc?.data || {};
-                const baseReward = Number(sys.dailyRewardBase || 10);
-                const bonusPerDay = Number(sys.dailyRewardStreakBonus || 2);
-                const reward = baseReward + (Math.min(currentUser.dailyStreak || 0, 7) * bonusPerDay);
-                
-                await User.updateOne({ id: currentUser.id }, { $inc: { balance: reward }, $set: { lastDailyCheckIn: new Date().toISOString(), dailyStreak: (currentUser.dailyStreak || 0) + 1 } });
-                await Transaction.create({ id: 'tx_d_' + Date.now(), userId: currentUser.id, amount: reward, type: 'BONUS', description: 'Daily Reward', date: new Date().toISOString() });
-                return res.json({ success: true, reward });
-            }
-
             case 'createWithdrawal': {
                 const amount = Number(data.request.amount);
-                if (currentUser.balance < amount) return res.status(400).json({ message: "Insufficient balance" });
+                if (currentUser.balance < amount) return res.status(400).json({ message: "Insufficient balance for this withdrawal." });
                 await Withdrawal.create(data.request);
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: -amount } });
-                await Transaction.create({ id: 'tx_w_' + Date.now(), userId: currentUser.id, amount, type: 'WITHDRAWAL', description: 'Withdrawal Request', date: new Date().toISOString() });
+                await Transaction.create({ id: 'tx_w_' + Date.now(), userId: currentUser.id, amount, type: 'WITHDRAWAL', description: 'Redemption Request', date: new Date().toISOString() });
                 return res.json({ success: true });
             }
 
             case 'saveTask':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access denied." });
                 await Task.findOneAndUpdate({ id: data.payload.id }, { $set: data.payload }, { upsert: true, new: true });
                 return res.json({ success: true });
 
             case 'deleteTask':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access denied." });
                 await Task.deleteOne({ id: data.id });
                 return res.json({ success: true });
 
             case 'saveSettings':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access denied." });
                 await Setting.findOneAndUpdate({ _id: data.key }, { $set: { data: data.payload } }, { upsert: true, new: true });
                 return res.json({ success: true });
 
-            case 'addShort':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
-                const vId = data.url.match(/(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/)?.[1];
-                await Short.create({ id: 's_' + Date.now(), youtubeId: vId, url: data.url, addedAt: new Date().toISOString() });
-                return res.json({ success: true });
-
-            case 'deleteShort':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
-                await Short.deleteOne({ id: data.id });
-                return res.json({ success: true });
-
             case 'getAllUsers':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access denied." });
                 return res.json(await User.find({}).limit(100));
 
             case 'getAllWithdrawals':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access denied." });
                 return res.json(await Withdrawal.find({}).sort({ date: -1 }));
 
             case 'updateWithdrawal':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access denied." });
                 await Withdrawal.updateOne({ id: data.id }, { $set: { status: data.status } });
                 return res.json({ success: true });
 
             case 'saveUser':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access denied." });
                 await User.findOneAndUpdate({ id: data.user.id }, { $set: data.user }, { new: true });
                 return res.json({ success: true });
 
-            case 'triggerHoneypot':
-                currentUser.blocked = true;
-                await currentUser.save();
-                return res.status(403).json({ message: "Blocked" });
-
-            default: return res.status(400).json({ message: "Unknown action" });
+            default: return res.status(400).json({ message: "Invalid action requested." });
         }
     } catch (e) {
-        console.error("API Panic:", e);
-        return res.status(500).json({ success: false, message: e.message });
+        console.error("API Error:", e);
+        return res.status(500).json({ success: false, message: e.message || "An internal error occurred." });
     }
 }

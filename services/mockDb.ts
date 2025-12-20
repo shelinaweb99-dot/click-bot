@@ -16,7 +16,7 @@ const clearAuth = () => {
 
 const apiCall = async (action: string, data: any = {}) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
     try {
         const token = getAuthToken();
         const tgData = (window as any).Telegram?.WebApp?.initData || '';
@@ -35,12 +35,16 @@ const apiCall = async (action: string, data: any = {}) => {
         
         const json = await res.json();
         if (!res.ok) {
-            if (res.status === 401) { clearAuth(); window.location.hash = '#/login'; }
-            throw new Error(json.message || `Error ${res.status}`);
+            if (res.status === 401) { 
+                clearAuth(); 
+                if (!window.location.hash.includes('login')) window.location.hash = '#/login'; 
+            }
+            throw new Error(json.message || `Server Error ${res.status}`);
         }
         return json;
     } catch (e: any) {
         clearTimeout(timeoutId);
+        if (e.name === 'AbortError') throw new Error("Connection timed out. Please try again.");
         throw e;
     }
 };
@@ -113,7 +117,7 @@ export const subscribeToChanges = (cb: () => void) => {
 };
 export const getLeaderboard = async () => {
     const users = await apiCall('getAllUsers');
-    return users.sort((a: any, b: any) => b.balance - a.balance).slice(0, 10);
+    return Array.isArray(users) ? users.sort((a: any, b: any) => b.balance - a.balance).slice(0, 10) : [];
 };
 export const getUsers = async () => apiCall('getAllUsers');
 export const fetchYouTubeMetadata = async (videoId: string) => null;
@@ -123,7 +127,10 @@ export const processReferral = async (userId: string, code: string) => apiCall('
 // PAYMENT METHODS MANAGEMENT
 export const getPaymentMethods = async (): Promise<WithdrawalMethod[]> => {
     const data = await getSetting('payment_methods', { methods: [] });
-    return Array.isArray(data.methods) ? data.methods : [];
+    // Defensive parsing for diverse MongoDB storage states
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.methods)) return data.methods;
+    return [];
 };
 
 export const savePaymentMethod = async (method: WithdrawalMethod) => {

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Task, TaskType, AdSettings } from '../../types';
 import { getTasks, verifyAndCompleteTask, getCurrentUserId, getAdSettings } from '../../services/mockDb';
-import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, ExternalLink, Timer, ShieldAlert, X, Info } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, Timer, ShieldAlert, X, Info } from 'lucide-react';
 import { AdSimulator } from '../../components/AdSimulator';
 
 export const TaskRunner: React.FC = () => {
@@ -45,7 +45,6 @@ export const TaskRunner: React.FC = () => {
 
   const handleStartTask = () => {
     setIsTimerRunning(true);
-    // Instead of window.open, we show our in-app viewer
     if (task?.url) {
       setShowViewer(true);
     }
@@ -70,10 +69,10 @@ export const TaskRunner: React.FC = () => {
             setIsCompleted(true);
             window.dispatchEvent(new Event('db_change'));
         } else {
-            alert(result.message || "Verification failed.");
+            alert(result.message || "Verification failed. Please try again.");
         }
-    } catch (e) {
-        alert("Server error. Please try again.");
+    } catch (e: any) {
+        alert(e.message || "Network error. Please try again later.");
     }
   };
 
@@ -202,7 +201,6 @@ export const TaskRunner: React.FC = () => {
                   </button>
               </div>
               <div className="flex-1 bg-white relative">
-                  {/* Notice for users if site fails to load due to X-Frame */}
                   <div className="absolute inset-0 flex flex-col items-center justify-center p-10 text-center -z-10 bg-gray-900">
                       <Info className="text-gray-600 mb-4" size={48} />
                       <p className="text-gray-400 text-sm font-medium">Mission loading...</p>
@@ -215,7 +213,6 @@ export const TaskRunner: React.FC = () => {
                     allow="autoplay; encrypted-media; fullscreen"
                   />
               </div>
-              {/* Bottom helper bar */}
               <div className="bg-[#1e293b] p-3 text-center border-t border-white/5">
                   <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">
                       Return to the app after the timer hits 0 to claim your rewards.
