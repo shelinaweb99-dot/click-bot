@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { WithdrawalRequest, WithdrawalStatus, WithdrawalMethod, User, SystemSettings } from '../../types';
 import { getCurrentUserId, getUserById, createWithdrawal, getWithdrawals, getPaymentMethods, subscribeToChanges, getSystemSettings } from '../../services/mockDb';
-import { History, Loader2, RefreshCw, CreditCard, AlertCircle, TrendingUp, ChevronRight, Landmark } from 'lucide-react';
+import { History, Loader2, RefreshCw, CreditCard, AlertCircle, ChevronRight, Landmark } from 'lucide-react';
 
 export const UserWallet: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -20,12 +20,13 @@ export const UserWallet: React.FC = () => {
   const isMounted = useRef(true);
 
   const fetchData = async () => {
+    if (!userId) return;
     try {
-        if (!isMounted.current) return;
-        setLoading(true);
+        if (isMounted.current) setLoading(true);
         
+        // Parallel fetch for speed
         const [userData, allWithdrawals, fetchedMethods, settings] = await Promise.all([
-            userId ? getUserById(userId) : Promise.resolve(null),
+            getUserById(userId),
             getWithdrawals(),
             getPaymentMethods(),
             getSystemSettings()
@@ -33,20 +34,28 @@ export const UserWallet: React.FC = () => {
 
         if (!isMounted.current) return;
 
-        if (userData) setUser(userData);
-        if (settings) setSystemSettings(settings);
+        if (userData) {
+            setUser(userData);
+        }
+        
+        if (settings) {
+            setSystemSettings(settings);
+        }
 
-        if (userId && Array.isArray(allWithdrawals)) {
+        if (Array.isArray(allWithdrawals)) {
             const myWithdrawals = allWithdrawals.filter(w => w.userId === userId);
             setHistory([...myWithdrawals].reverse());
         }
 
+        // Logic fix: Ensure methods is an array
         const methodsArray = Array.isArray(fetchedMethods) ? fetchedMethods : [];
         const activeMethods = methodsArray.filter(m => m.isEnabled);
         
         setAvailableMethods(activeMethods);
         
         if (activeMethods.length > 0 && !methodId) {
+            setMethodId(activeMethods[0].id);
+        } else if (activeMethods.length > 0 && !activeMethods.find(m => m.id === methodId)) {
             setMethodId(activeMethods[0].id);
         }
     } catch (e) {
@@ -89,7 +98,7 @@ export const UserWallet: React.FC = () => {
             setIsSubmitting(false);
             return;
         }
-        if (freshUser.balance < val) {
+        if ((freshUser.balance || 0) < val) {
             setMessage('Insufficient balance.');
             setIsSubmitting(false);
             return;
@@ -108,7 +117,7 @@ export const UserWallet: React.FC = () => {
         
         await createWithdrawal(req);
         if (isMounted.current) {
-            setMessage('Request submitted for approval.');
+            setMessage('Success! Request submitted.');
             setAmount('');
             setDetails('');
             fetchData();
@@ -124,16 +133,17 @@ export const UserWallet: React.FC = () => {
   if (loading && !user) return (
     <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
         <Loader2 className="animate-spin text-blue-500" size={32} />
-        <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Accessing Ledger...</p>
+        <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Refreshing Wallet Data...</p>
     </div>
   );
 
   const exchangeRate = systemSettings?.pointsPerDollar || 1000;
-  const currentUSD = (user?.balance || 0) / exchangeRate;
+  const currentBalance = user?.balance || 0;
+  const currentUSD = currentBalance / exchangeRate;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-16">
-       {/* 1. Value Card (Matched to Screenshot Style) */}
+       {/* 1. Value Card */}
        <div className="bg-[#111827] p-8 rounded-[2.5rem] border border-white/5 text-center relative overflow-hidden shadow-2xl">
             <div className="bg-blue-600/10 inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl border border-blue-500/10 mb-5">
                 <p className="text-blue-400 font-black text-[10px] uppercase tracking-widest italic">
@@ -141,9 +151,9 @@ export const UserWallet: React.FC = () => {
                 </p>
             </div>
             
-            <p className="text-gray-500 text-[9px] font-black uppercase tracking-[0.3em] mb-2 opacity-60">Total USDT Balance</p>
+            <p className="text-gray-500 text-[9px] font-black uppercase tracking-[0.3em] mb-2 opacity-60">Total Points Balance</p>
             <div className="flex items-baseline justify-center gap-2">
-                <h1 className="text-5xl font-black text-white tracking-tighter">{(user?.balance || 0).toFixed(0)}</h1>
+                <h1 className="text-5xl font-black text-white tracking-tighter">{currentBalance.toFixed(0)}</h1>
                 <span className="text-blue-500 font-black italic tracking-widest text-[10px]">USDT-PTS</span>
             </div>
 
@@ -177,7 +187,7 @@ export const UserWallet: React.FC = () => {
                         <AlertCircle className="text-orange-500" size={32} />
                    </div>
                    <p className="text-orange-200 text-[11px] font-black uppercase tracking-widest">Payouts Currently Paused</p>
-                   <p className="text-gray-600 text-[9px] mt-2 font-bold uppercase tracking-widest max-w-[180px] mx-auto leading-relaxed">Administrator has not enabled any payment channels.</p>
+                   <p className="text-gray-600 text-[9px] mt-2 font-bold uppercase tracking-widest max-w-[180px] mx-auto leading-relaxed">The administrator has not configured any payment methods yet.</p>
                </div>
            ) : (
                <form onSubmit={handleWithdraw} className="space-y-6">
@@ -229,7 +239,7 @@ export const UserWallet: React.FC = () => {
                         disabled={isSubmitting || availableMethods.length === 0}
                         className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 text-white font-black text-[10px] uppercase tracking-[0.3em] py-6 rounded-[1.8rem] transition-all active:scale-[0.98] shadow-2xl shadow-blue-900/30 mt-4 border border-blue-400/10"
                    >
-                       {isSubmitting ? 'Verifying Transaction...' : 'Initiate Withdrawal'}
+                       {isSubmitting ? 'Verifying...' : 'Initiate Withdrawal'}
                    </button>
                </form>
            )}
@@ -237,18 +247,17 @@ export const UserWallet: React.FC = () => {
 
        {/* 3. Transaction History */}
        <div className="bg-[#111827] p-8 rounded-[2.5rem] border border-white/5 shadow-xl">
-           <h3 className="text-white font-black text-[9px] uppercase tracking-[0.2em] mb-8 flex items-center gap-3">
-               <History size={16} className="text-blue-500" /> Transaction History
+           <h3 className="text-white font-black text-[9px] uppercase tracking-[0.2em] mb-8 flex items-center gap-3 font-bold">
+               Transaction Log
            </h3>
            <div className="space-y-4">
                {history.length === 0 ? (
-                    <div className="text-center py-16 opacity-10 flex flex-col items-center">
-                        <History size={64} className="mb-4" />
-                        <p className="text-[10px] font-black uppercase tracking-widest italic">No Ledger Records</p>
+                    <div className="text-center py-12 opacity-20">
+                        <p className="text-[10px] font-black uppercase tracking-widest italic">No Records Found</p>
                     </div>
                ) : (
                 history.map(item => (
-                    <div key={item.id} className="flex justify-between items-center bg-[#030712] p-5 rounded-[1.8rem] border border-white/5 transition-all hover:bg-white/[0.02]">
+                    <div key={item.id} className="flex justify-between items-center bg-[#030712] p-5 rounded-[1.8rem] border border-white/5 transition-all">
                         <div className="text-left">
                             <p className="text-white text-[11px] font-black tracking-tight uppercase">{item.method}</p>
                             <p className="text-[9px] text-gray-700 font-black uppercase mt-1 tracking-widest">{new Date(item.date).toLocaleDateString()}</p>

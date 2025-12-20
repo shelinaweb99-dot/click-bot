@@ -14,12 +14,11 @@ async function connectToDatabase() {
         mongoose.set('strictQuery', true);
         const opts = {
             serverSelectionTimeoutMS: 20000,
-            socketTimeoutMS: 60000, // Longer socket timeout for reliability
+            socketTimeoutMS: 60000, 
             connectTimeoutMS: 20000,
         };
         await mongoose.connect(uri, opts);
         cachedDb = mongoose.connection;
-        console.log("DB Connected Successfully");
         return cachedDb;
     } catch (e) {
         console.error("DB Connection Error:", e);
@@ -60,7 +59,7 @@ const TransactionSchema = new mongoose.Schema({
 
 const SettingSchema = new mongoose.Schema({
     _id: String,
-    data: Object
+    data: mongoose.Schema.Types.Mixed
 }, { strict: false });
 
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
@@ -133,7 +132,11 @@ export default async function handler(req, res) {
         if (currentUser.blocked) return res.status(403).json({ message: "Access restricted by administrator." });
 
         switch (action) {
-            case 'getUser': return res.json(currentUser);
+            case 'getUser': 
+                // Return fresh user data with balance
+                const freshUser = await User.findOne({ id: currentUser.id });
+                return res.json(freshUser);
+                
             case 'getTasks': return res.json(await Task.find({ status: 'ACTIVE' }));
             case 'getTransactions': return res.json(await Transaction.find({ userId: currentUser.id }).sort({ date: -1 }).limit(50));
             case 'getAnnouncements': return res.json(await Announcement.find({}).sort({ date: -1 }));
@@ -143,6 +146,16 @@ export default async function handler(req, res) {
                 const doc = await Setting.findById(data.key);
                 return res.json(doc?.data || {});
             }
+
+            case 'saveSettings':
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
+                // Robust update
+                await Setting.findOneAndUpdate(
+                    { _id: data.key }, 
+                    { $set: { _id: data.key, data: data.payload } }, 
+                    { upsert: true, new: true }
+                );
+                return res.json({ success: true });
 
             case 'completeTask': {
                 const task = await Task.findOne({ id: data.taskId });
@@ -184,16 +197,6 @@ export default async function handler(req, res) {
                 await Task.deleteOne({ id: data.id });
                 return res.json({ success: true });
 
-            case 'saveSettings':
-                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
-                // Use a atomic update to avoid data loss
-                await Setting.findOneAndUpdate(
-                    { _id: data.key }, 
-                    { $set: { data: data.payload } }, 
-                    { upsert: true, new: true }
-                );
-                return res.json({ success: true });
-
             case 'getAllUsers':
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
                 return res.json(await User.find({}).limit(100));
@@ -211,6 +214,114 @@ export default async function handler(req, res) {
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
                 await User.findOneAndUpdate({ id: data.user.id }, { $set: data.user }, { new: true });
                 return res.json({ success: true });
+
+            // Fix: Add missing dailyCheckIn action
+            case 'dailyCheckIn': {
+                const today = new Date().toISOString().split('T')[0];
+                if (currentUser.lastDailyCheckIn === today) return res.status(400).json({ message: "Already checked in today." });
+                
+                const sysSettingsDoc = await Setting.findById('system');
+                const sysSettings = sysSettingsDoc?.data || { dailyRewardBase: 10 };
+                const reward = Number(sysSettings.dailyRewardBase) || 10;
+
+                await User.updateOne({ id: currentUser.id }, { 
+                    $set: { lastDailyCheckIn: today },
+                    $inc: { balance: reward, dailyStreak: 1 }
+                });
+                await Transaction.create({ id: 'tx_d_' + Date.now(), userId: currentUser.id, amount: reward, type: 'BONUS', description: 'Daily Check-in Reward', date: new Date().toISOString() });
+                return res.json({ success: true, reward });
+            }
+
+            // Fix: Add missing playMiniGame action
+            case 'playMiniGame': {
+                const gameSettingsDoc = await Setting.findById('games');
+                const gameSettings = gameSettingsDoc?.data || {};
+                const gameConfig = gameSettings[data.gameType] || { minReward: 1, maxReward: 10 };
+                
+                const reward = Math.floor(Math.random() * (gameConfig.maxReward - gameConfig.minReward + 1)) + gameConfig.minReward;
+                
+                await User.updateOne({ id: currentUser.id }, { $inc: { balance: reward } });
+                await Transaction.create({ id: 'tx_g_' + Date.now(), userId: currentUser.id, amount: reward, type: 'GAME', description: `Game Reward: ${data.gameType}`, date: new Date().toISOString() });
+                return res.json({ success: true, reward, left: 10 }); 
+            }
+
+            // Fix: Add missing addShort action
+            case 'addShort': {
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
+                let vid = '';
+                if (data.url.includes('v=')) vid = data.url.split('v=')[1]?.split('&')[0];
+                else if (data.url.includes('youtu.be/')) vid = data.url.split('youtu.be/')[1]?.split('?')[0];
+                else if (data.url.includes('/shorts/')) vid = data.url.split('/shorts/')[1]?.split('?')[0];
+                
+                if (!vid) return res.status(400).json({ message: "Invalid YouTube URL." });
+                await Short.create({ id: 's_' + Date.now(), youtubeId: vid, url: data.url, addedAt: new Date().toISOString() });
+                return res.json({ success: true });
+            }
+
+            // Fix: Add missing deleteShort action
+            case 'deleteShort':
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
+                await Short.deleteOne({ id: data.id });
+                return res.json({ success: true });
+
+            // Fix: Add missing addAnnouncement action
+            case 'addAnnouncement':
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
+                await Announcement.create(data.payload);
+                return res.json({ success: true });
+
+            // Fix: Add missing deleteAnnouncement action
+            case 'deleteAnnouncement':
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
+                await Announcement.deleteOne({ id: data.id });
+                return res.json({ success: true });
+
+            // Fix: Add missing processReferral action
+            case 'processReferral': {
+                const { userId, code } = data;
+                if (userId === code) return res.status(400).json({ message: "Cannot refer yourself." });
+                const referrer = await User.findOne({ id: code });
+                if (!referrer) return res.status(404).json({ message: "Invalid Referral ID." });
+                
+                const user = await User.findOne({ id: userId });
+                if (user.referredBy) return res.status(400).json({ message: "Already referred." });
+
+                await User.updateOne({ id: userId }, { $set: { referredBy: code }, $inc: { balance: 10 } });
+                await User.updateOne({ id: code }, { $inc: { balance: 25, referralCount: 1, referralEarnings: 25 } });
+                
+                await Transaction.create({ id: 'tx_ref_u_' + Date.now(), userId, amount: 10, type: 'REFERRAL', description: 'Referral Join Bonus', date: new Date().toISOString() });
+                await Transaction.create({ id: 'tx_ref_r_' + Date.now(), userId: code, amount: 25, type: 'REFERRAL', description: `Referral Reward for ${user.name}`, date: new Date().toISOString() });
+                
+                return res.json({ success: true, message: "Success! Bonus claimed." });
+            }
+
+            // Fix: Add missing completeShort action
+            case 'completeShort': {
+                const shortSettingsDoc = await Setting.findById('shorts');
+                const shortSettings = shortSettingsDoc?.data || { pointsPerVideo: 1 };
+                const reward = Number(shortSettings.pointsPerVideo) || 1;
+                
+                await User.updateOne({ id: currentUser.id }, { 
+                    $inc: { balance: reward },
+                    $set: { [`shortsData.lastWatched.${data.videoId}`]: new Date().toISOString() }
+                });
+                await Transaction.create({ id: 'tx_s_' + Date.now(), userId: currentUser.id, amount: reward, type: 'SHORTS', description: 'Watched Short Video', date: new Date().toISOString() });
+                return res.json({ success: true, reward });
+            }
+
+            // Fix: Add missing completeAd action
+            case 'completeAd': {
+                const shortSettingsDoc = await Setting.findById('shorts');
+                const shortSettings = shortSettingsDoc?.data || { pointsPerAd: 5 };
+                const reward = Number(shortSettings.pointsPerAd) || 5;
+                
+                await User.updateOne({ id: currentUser.id }, { $inc: { balance: reward } });
+                await Transaction.create({ id: 'tx_ad_' + Date.now(), userId: currentUser.id, amount: reward, type: 'BONUS', description: 'Ad View Reward', date: new Date().toISOString() });
+                return res.json({ success: true, reward });
+            }
+
+            // Fix: Add missing initiateAdWatch action
+            case 'initiateAdWatch': return res.json({ success: true });
 
             default: return res.status(400).json({ message: "Unknown action." });
         }

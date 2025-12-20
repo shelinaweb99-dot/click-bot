@@ -16,7 +16,7 @@ const clearAuth = () => {
 
 const apiCall = async (action: string, data: any = {}) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 30000); 
     try {
         const token = getAuthToken();
         const tgData = (window as any).Telegram?.WebApp?.initData || '';
@@ -47,6 +47,11 @@ const apiCall = async (action: string, data: any = {}) => {
         if (e.name === 'AbortError') throw new Error("Connection timed out. Please try again.");
         throw e;
     }
+};
+
+// Fix: Add missing initMockData export required by index.tsx
+export const initMockData = () => {
+    // Initialization is handled via standard API/DB logic
 };
 
 export const loginUser = async (email: string, password: string) => {
@@ -83,7 +88,6 @@ export const updateWithdrawalStatus = async (id: string, status: string) => apiC
 const getSetting = async (key: string, defaultVal: any) => {
     try {
         const data = await apiCall('getSettings', { key });
-        // Ensure we always return an object even if empty to avoid crashes
         return (data && typeof data === 'object') ? data : defaultVal;
     } catch { return defaultVal; }
 };
@@ -100,7 +104,6 @@ export const getShortsSettings = async (): Promise<ShortsSettings> => getSetting
 export const saveShortsSettings = async (s: ShortsSettings) => apiCall('saveSettings', { key: 'shorts', payload: s });
 
 export const getShorts = async (): Promise<ShortVideo[]> => apiCall('getShorts');
-export const getManualShorts = async (): Promise<ShortVideo[]> => apiCall('getShorts');
 export const addShort = async (url: string) => apiCall('addShort', { url });
 export const deleteShort = async (id: string) => apiCall('deleteShort', { id });
 export const getAnnouncements = async (): Promise<Announcement[]> => apiCall('getAnnouncements');
@@ -109,33 +112,28 @@ export const deleteAnnouncement = async (id: string) => apiCall('deleteAnnouncem
 export const saveTask = async (task: Task) => apiCall('saveTask', { payload: task });
 export const deleteTask = async (id: string) => apiCall('deleteTask', { id });
 
-export const getPublicIp = async () => '127.0.0.1';
-export const getFingerprint = () => 'secure_device';
-export const initMockData = async () => {};
 export const subscribeToChanges = (cb: () => void) => {
     window.addEventListener('db_change', cb);
     return () => window.removeEventListener('db_change', cb);
 };
+
 export const getLeaderboard = async () => {
     const users = await apiCall('getAllUsers');
     return Array.isArray(users) ? users.sort((a: any, b: any) => b.balance - a.balance).slice(0, 10) : [];
 };
 export const getUsers = async () => apiCall('getAllUsers');
-export const fetchYouTubeMetadata = async (videoId: string) => null;
-export const verifyTelegramMembership = async (c: string, u: number) => ({ success: true });
 export const processReferral = async (userId: string, code: string) => apiCall('processReferral', { userId, code });
 
-// PAYMENT METHODS MANAGEMENT (Consolidated & Hardened)
+// PAYMENT METHODS (Simplified storage structure)
 export const getPaymentMethods = async (): Promise<WithdrawalMethod[]> => {
     const data = await apiCall('getSettings', { key: 'payment_methods' });
-    // Look for methods array in either a direct array or a wrapped object
-    if (Array.isArray(data)) return data;
+    // Structure is standardized to { methods: [] }
     if (data && Array.isArray(data.methods)) return data.methods;
+    if (Array.isArray(data)) return data; 
     return [];
 };
 
 export const updateAllPaymentMethods = async (methods: WithdrawalMethod[]) => {
-    // Explicitly wrap the array in a 'methods' key to match getPaymentMethods expectations
     return apiCall('saveSettings', { key: 'payment_methods', payload: { methods } });
 };
 
@@ -158,11 +156,39 @@ export const deletePaymentMethod = async (id: string) => {
     return updateAllPaymentMethods(updated);
 };
 
-export const extractYouTubeId = (url: string) => {
-    const match = url.match(/(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-    return match ? match[1] : null;
+export const recordShortView = async (u: string, v: string) => apiCall('completeShort', { videoId: v });
+export const recordAdReward = async (u: string) => apiCall('completeAd');
+
+// Fix: Add missing getRotatedLink export required by AdSimulator.tsx
+export const getRotatedLink = async (): Promise<string | null> => {
+    const settings = await getAdSettings();
+    if (settings?.rotation?.isEnabled && settings.rotation.links.length > 0) {
+        const activeLinks = settings.rotation.links.filter(l => l.isEnabled);
+        if (activeLinks.length === 0) return null;
+        const index = settings.rotation.currentLinkIndex % activeLinks.length;
+        return activeLinks[index].url;
+    }
+    return settings?.monetagDirectLink || settings?.adsterraLink || null;
 };
-export const initiateAdWatch = async () => ({success:true});
-export const getRotatedLink = async () => null;
-export const recordShortView = async (u: string, v: string) => ({success: true});
-export const recordAdReward = async (u: string) => ({success: true});
+
+// Fix: Add missing initiateAdWatch export required by AdSimulator.tsx
+export const initiateAdWatch = async () => apiCall('initiateAdWatch');
+
+// Fix: Add missing getPublicIp export required by Auth.tsx
+export const getPublicIp = async () => {
+    try {
+        const res = await fetch('https://api.ipify.org?format=json');
+        const data = await res.json();
+        return data.ip;
+    } catch {
+        return '127.0.0.1';
+    }
+};
+
+// Fix: Add missing getFingerprint export required by Auth.tsx
+export const getFingerprint = () => {
+    return btoa(navigator.userAgent + screen.width).substring(0, 16);
+};
+
+// Fix: Add missing getManualShorts export required by AdminShorts.tsx
+export const getManualShorts = async (): Promise<ShortVideo[]> => getShorts();
