@@ -13,19 +13,25 @@ export const UserDashboard: React.FC = () => {
   const isMounted = useRef(true);
   const navigate = useNavigate();
 
-  const fetchData = async () => {
+  const fetchData = async (silent = false) => {
     try {
         const id = getCurrentUserId();
         if (!id) { navigate('/login'); return; }
-        const u = await getUserById(id);
+        
+        if (!silent) setLoading(true);
+        
+        const [u, txs] = await Promise.all([
+            getUserById(id),
+            getTransactions(id)
+        ]);
+
         if (!isMounted.current) return;
+        
         if (!u) { navigate('/login'); return; }
+        
         setUser(u);
-        const txs = await getTransactions(id);
-        if (isMounted.current) {
-            setTransactions(txs.slice(0, 5));
-            setLoading(false);
-        }
+        setTransactions(txs.slice(0, 5));
+        setLoading(false);
     } catch (e) {
         if (isMounted.current) setLoading(false);
     }
@@ -33,9 +39,9 @@ export const UserDashboard: React.FC = () => {
 
   useEffect(() => {
     isMounted.current = true;
-    fetchData();
+    fetchData(); // Initial load
     const unsubscribe = subscribeToChanges(() => {
-        if (isMounted.current) fetchData();
+        if (isMounted.current) fetchData(true); // Background refresh
     });
     return () => {
         isMounted.current = false;
@@ -48,7 +54,7 @@ export const UserDashboard: React.FC = () => {
     setIsClaiming(true);
     try {
         const result = await claimDailyReward(user.id);
-        if (isMounted.current && result.success) fetchData();
+        if (isMounted.current && result.success) fetchData(true);
     } catch (e: any) {
         alert(e.message || "Failed to claim reward.");
     } finally {
@@ -63,10 +69,10 @@ export const UserDashboard: React.FC = () => {
       return today === last;
   };
 
-  if (loading || !user) return (
+  if (loading && !user) return (
     <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
         <Loader2 className="animate-spin text-blue-500" size={32} />
-        <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Accessing Points Wallet...</p>
+        <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Opening Secure Wallet...</p>
     </div>
   );
 
@@ -86,7 +92,7 @@ export const UserDashboard: React.FC = () => {
             </div>
             <div className="flex items-baseline gap-1.5 sm:gap-2">
                 <span className="text-[clamp(2.5rem,10vw,4rem)] font-black tracking-tighter drop-shadow-md leading-none">
-                    {user.balance.toFixed(0)}
+                    {user?.balance.toFixed(0) || '0'}
                 </span>
                 <span className="text-[10px] sm:text-sm font-black opacity-80 italic tracking-widest">USDT-Pts</span>
             </div>
@@ -109,7 +115,7 @@ export const UserDashboard: React.FC = () => {
               </div>
               <div className="min-w-0">
                   <h3 className="text-white font-bold text-[11px] sm:text-sm truncate">Daily Check-in</h3>
-                  <p className="text-orange-400 font-black text-[8px] sm:text-[10px] uppercase tracking-wider">{user.dailyStreak || 1} Day Streak</p>
+                  <p className="text-orange-400 font-black text-[8px] sm:text-[10px] uppercase tracking-wider">{user?.dailyStreak || 1} Day Streak</p>
               </div>
           </div>
           <button 
@@ -132,7 +138,7 @@ export const UserDashboard: React.FC = () => {
             </div>
             <div>
               <p className="text-gray-500 text-[8px] sm:text-[9px] font-black uppercase tracking-widest">Total Earned</p>
-              <p className="text-white font-black text-lg sm:text-2xl mt-0.5 tracking-tight">{user.balance.toFixed(0)}</p>
+              <p className="text-white font-black text-lg sm:text-2xl mt-0.5 tracking-tight">{user?.balance.toFixed(0) || '0'}</p>
             </div>
         </div>
         <div className="glass-card p-4 sm:p-6 rounded-[1.5rem] sm:rounded-[2.2rem] border border-white/5 flex flex-col justify-between">
@@ -148,11 +154,11 @@ export const UserDashboard: React.FC = () => {
 
       <div className="glass-card rounded-[1.5rem] sm:rounded-[2.2rem] p-5 sm:p-6 border border-white/5 shadow-xl">
         <h3 className="text-white font-black text-[9px] sm:text-[10px] uppercase tracking-[0.2em] mb-4 sm:mb-6 flex items-center gap-2">
-            <Clock size={14} className="text-blue-500" /> Points History
+            <Clock size={14} className="text-blue-500" /> Recent Activity
         </h3>
         <div className="space-y-4 sm:space-y-6 relative before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-[1px] before:bg-white/5">
             {transactions.length === 0 ? (
-                <p className="text-gray-600 text-[10px] sm:text-xs font-bold italic py-4">No points recorded yet</p>
+                <p className="text-gray-600 text-[10px] sm:text-xs font-bold italic py-4">No transactions found</p>
             ) : (
                 transactions.map(tx => (
                     <div key={tx.id} className="flex justify-between items-start pl-5 sm:pl-6 relative">

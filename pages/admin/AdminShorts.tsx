@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ShortVideo, ShortsSettings } from '../../types';
-import { getShortsSettings, saveShortsSettings, subscribeToChanges, addShort, deleteShort, getManualShorts } from '../../services/mockDb';
+// Changed getManualShorts to getShorts as it is the correct exported member in services/mockDb.ts
+import { getShortsSettings, saveShortsSettings, subscribeToChanges, addShort, deleteShort, getShorts } from '../../services/mockDb';
 import { PlaySquare, Save, Settings, Search, Plus, Trash2, Video, Youtube, ExternalLink, Info, LayoutList, AlertCircle, Clock } from 'lucide-react';
 
 export const AdminShorts: React.FC = () => {
@@ -14,9 +15,10 @@ export const AdminShorts: React.FC = () => {
 
   const fetchData = async () => {
     try {
+        // Updated to use getShorts() instead of getManualShorts() as getShorts is available and returns the correct data
         const [settingsData, manualData] = await Promise.all([
              getShortsSettings(),
-             getManualShorts()
+             getShorts()
         ]);
         if (isMounted.current) {
             setSettings(settingsData);
@@ -93,7 +95,7 @@ export const AdminShorts: React.FC = () => {
           <button 
             onClick={handleSaveSettings}
             disabled={isSavingSettings}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-900/20 transition-all active:scale-95"
+            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-blue-900/20 transition-all active:scale-95"
           >
               <Save size={20} /> {isSavingSettings ? 'Saving...' : 'Save Configuration'}
           </button>

@@ -3,6 +3,20 @@ import { User, Task, WithdrawalRequest, UserRole, Transaction, AdSettings, Syste
 
 const API_URL = '/api';
 
+// --- PERFORMANCE CACHE ---
+const _cache: Record<string, { data: any, timestamp: number }> = {};
+const CACHE_TTL = 30000; // 30 seconds for volatile data
+
+const getCached = (key: string) => {
+    const item = _cache[key];
+    if (item && (Date.now() - item.timestamp < CACHE_TTL)) return item.data;
+    return null;
+};
+
+const setCache = (key: string, data: any) => {
+    _cache[key] = { data, timestamp: Date.now() };
+};
+
 const getAuthToken = () => localStorage.getItem('session_token'); 
 const setAuthToken = (token: string) => localStorage.setItem('session_token', token);
 const getUserId = () => localStorage.getItem('app_user_id');
@@ -14,9 +28,15 @@ const clearAuth = () => {
     localStorage.removeItem('app_user_role'); 
 };
 
-const apiCall = async (action: string, data: any = {}) => {
+const apiCall = async (action: string, data: any = {}, useCache = false) => {
+    const cacheKey = `${action}_${JSON.stringify(data)}`;
+    if (useCache) {
+        const cached = getCached(cacheKey);
+        if (cached) return cached;
+    }
+
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); 
+    const timeoutId = setTimeout(() => controller.abort(), 15000); 
     try {
         const token = getAuthToken();
         const tgData = (window as any).Telegram?.WebApp?.initData || '';
@@ -41,15 +61,24 @@ const apiCall = async (action: string, data: any = {}) => {
             }
             throw new Error(json.message || `Server Error ${res.status}`);
         }
+        
+        if (useCache) setCache(cacheKey, json);
         return json;
     } catch (e: any) {
         clearTimeout(timeoutId);
-        if (e.name === 'AbortError') throw new Error("Connection timed out. Please try again.");
+        if (e.name === 'AbortError') throw new Error("Connection timed out. Retrying...");
         throw e;
     }
 };
 
-export const initMockData = () => {};
+// Background pre-warmer
+export const initMockData = () => {
+    // Warm up settings and user data
+    if (getAuthToken()) {
+        getUserById(getUserId() || '');
+        getTasks();
+    }
+};
 
 export const loginUser = async (email: string, password: string) => {
     const response = await apiCall('login', { email, password });
@@ -70,21 +99,39 @@ export const registerUser = async (email: string, password: string, userData: Pa
 export const logout = async () => { clearAuth(); };
 export const getCurrentUserId = () => getUserId();
 export const getUserRole = () => localStorage.getItem('app_user_role') as UserRole;
-export const getUserById = async (id: string) => apiCall('getUser');
+export const getUserById = async (id: string) => apiCall('getUser', {}, true);
 
-export const saveUser = async (user: User) => apiCall('saveUser', { user });
-export const getTasks = async (): Promise<Task[]> => apiCall('getTasks');
-export const verifyAndCompleteTask = async (userId: string, taskId: string) => apiCall('completeTask', { taskId });
-export const claimDailyReward = async (userId: string) => apiCall('dailyCheckIn');
+export const saveUser = async (user: User) => {
+    const res = await apiCall('saveUser', { user });
+    setCache(`getUser_{}`, user); // Optimistic cache update
+    return res;
+};
+
+export const getTasks = async (): Promise<Task[]> => apiCall('getTasks', {}, true);
+
+export const verifyAndCompleteTask = async (userId: string, taskId: string) => {
+    const res = await apiCall('completeTask', { taskId });
+    // Invalidate caches
+    delete _cache[`getTasks_{}`];
+    delete _cache[`getUser_{}`];
+    return res;
+};
+
+export const claimDailyReward = async (userId: string) => {
+    const res = await apiCall('dailyCheckIn');
+    delete _cache[`getUser_{}`];
+    return res;
+};
+
 export const playMiniGame = async (userId: string, gameType: string) => apiCall('playMiniGame', { gameType });
-export const getTransactions = async (userId: string): Promise<Transaction[]> => apiCall('getTransactions');
+export const getTransactions = async (userId: string): Promise<Transaction[]> => apiCall('getTransactions', {}, true);
 export const createWithdrawal = async (req: WithdrawalRequest) => apiCall('createWithdrawal', { request: req });
-export const getWithdrawals = async (): Promise<WithdrawalRequest[]> => apiCall('getAllWithdrawals');
+export const getWithdrawals = async (): Promise<WithdrawalRequest[]> => apiCall('getAllWithdrawals', {}, true);
 export const updateWithdrawalStatus = async (id: string, status: string) => apiCall('updateWithdrawal', { id, status });
 
 const getSetting = async (key: string, defaultVal: any) => {
     try {
-        const data = await apiCall('getSettings', { key });
+        const data = await apiCall('getSettings', { key }, true);
         return (data && typeof data === 'object') ? data : defaultVal;
     } catch { return defaultVal; }
 };
@@ -100,10 +147,10 @@ export const saveGameSettings = async (s: GameSettings) => apiCall('saveSettings
 export const getShortsSettings = async (): Promise<ShortsSettings> => getSetting('shorts', { isEnabled: true });
 export const saveShortsSettings = async (s: ShortsSettings) => apiCall('saveSettings', { key: 'shorts', payload: s });
 
-export const getShorts = async (): Promise<ShortVideo[]> => apiCall('getShorts');
+export const getShorts = async (): Promise<ShortVideo[]> => apiCall('getShorts', {}, true);
 export const addShort = async (url: string) => apiCall('addShort', { url });
 export const deleteShort = async (id: string) => apiCall('deleteShort', { id });
-export const getAnnouncements = async (): Promise<Announcement[]> => apiCall('getAnnouncements');
+export const getAnnouncements = async (): Promise<Announcement[]> => apiCall('getAnnouncements', {}, true);
 export const addAnnouncement = async (a: any) => apiCall('addAnnouncement', { payload: a });
 export const deleteAnnouncement = async (id: string) => apiCall('deleteAnnouncement', { id });
 export const saveTask = async (task: Task) => apiCall('saveTask', { payload: task });
@@ -115,15 +162,15 @@ export const subscribeToChanges = (cb: () => void) => {
 };
 
 export const getLeaderboard = async () => {
-    const users = await apiCall('getAllUsers');
+    const users = await apiCall('getAllUsers', {}, true);
     return Array.isArray(users) ? users.sort((a: any, b: any) => b.balance - a.balance).slice(0, 10) : [];
 };
-export const getUsers = async () => apiCall('getAllUsers');
+
+export const getUsers = async () => apiCall('getAllUsers', {}, true);
 export const processReferral = async (userId: string, code: string) => apiCall('processReferral', { userId, code });
 
-// PAYMENT METHODS (Simplified & Compatible)
 export const getPaymentMethods = async (): Promise<WithdrawalMethod[]> => {
-    const data = await apiCall('getSettings', { key: 'payment_methods' });
+    const data = await apiCall('getSettings', { key: 'payment_methods' }, true);
     if (!data) return [];
     if (Array.isArray(data)) return data;
     if (data.methods && Array.isArray(data.methods)) return data.methods;
@@ -182,5 +229,3 @@ export const getPublicIp = async () => {
 export const getFingerprint = () => {
     return btoa(navigator.userAgent + screen.width).substring(0, 16);
 };
-
-export const getManualShorts = async (): Promise<ShortVideo[]> => getShorts();
