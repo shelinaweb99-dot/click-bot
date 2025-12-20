@@ -49,10 +49,7 @@ const apiCall = async (action: string, data: any = {}) => {
     }
 };
 
-// Fix: Add missing initMockData export required by index.tsx
-export const initMockData = () => {
-    // Initialization is handled via standard API/DB logic
-};
+export const initMockData = () => {};
 
 export const loginUser = async (email: string, password: string) => {
     const response = await apiCall('login', { email, password });
@@ -124,12 +121,12 @@ export const getLeaderboard = async () => {
 export const getUsers = async () => apiCall('getAllUsers');
 export const processReferral = async (userId: string, code: string) => apiCall('processReferral', { userId, code });
 
-// PAYMENT METHODS (Simplified storage structure)
+// PAYMENT METHODS (Simplified & Compatible)
 export const getPaymentMethods = async (): Promise<WithdrawalMethod[]> => {
     const data = await apiCall('getSettings', { key: 'payment_methods' });
-    // Structure is standardized to { methods: [] }
-    if (data && Array.isArray(data.methods)) return data.methods;
-    if (Array.isArray(data)) return data; 
+    if (!data) return [];
+    if (Array.isArray(data)) return data;
+    if (data.methods && Array.isArray(data.methods)) return data.methods;
     return [];
 };
 
@@ -159,7 +156,6 @@ export const deletePaymentMethod = async (id: string) => {
 export const recordShortView = async (u: string, v: string) => apiCall('completeShort', { videoId: v });
 export const recordAdReward = async (u: string) => apiCall('completeAd');
 
-// Fix: Add missing getRotatedLink export required by AdSimulator.tsx
 export const getRotatedLink = async (): Promise<string | null> => {
     const settings = await getAdSettings();
     if (settings?.rotation?.isEnabled && settings.rotation.links.length > 0) {
@@ -171,10 +167,8 @@ export const getRotatedLink = async (): Promise<string | null> => {
     return settings?.monetagDirectLink || settings?.adsterraLink || null;
 };
 
-// Fix: Add missing initiateAdWatch export required by AdSimulator.tsx
 export const initiateAdWatch = async () => apiCall('initiateAdWatch');
 
-// Fix: Add missing getPublicIp export required by Auth.tsx
 export const getPublicIp = async () => {
     try {
         const res = await fetch('https://api.ipify.org?format=json');
@@ -185,10 +179,8 @@ export const getPublicIp = async () => {
     }
 };
 
-// Fix: Add missing getFingerprint export required by Auth.tsx
 export const getFingerprint = () => {
     return btoa(navigator.userAgent + screen.width).substring(0, 16);
 };
 
-// Fix: Add missing getManualShorts export required by AdminShorts.tsx
 export const getManualShorts = async (): Promise<ShortVideo[]> => getShorts();

@@ -47,7 +47,7 @@ export const UserWallet: React.FC = () => {
             setHistory([...myWithdrawals].reverse());
         }
 
-        // Logic fix: Ensure methods is an array
+        // Logic fix: Ensure methods is an array and filter active ones
         const methodsArray = Array.isArray(fetchedMethods) ? fetchedMethods : [];
         const activeMethods = methodsArray.filter(m => m.isEnabled);
         
@@ -138,7 +138,7 @@ export const UserWallet: React.FC = () => {
   );
 
   const exchangeRate = systemSettings?.pointsPerDollar || 1000;
-  const currentBalance = user?.balance || 0;
+  const currentBalance = user?.balance ?? 0;
   const currentUSD = currentBalance / exchangeRate;
 
   return (
@@ -153,7 +153,9 @@ export const UserWallet: React.FC = () => {
             
             <p className="text-gray-500 text-[9px] font-black uppercase tracking-[0.3em] mb-2 opacity-60">Total Points Balance</p>
             <div className="flex items-baseline justify-center gap-2">
-                <h1 className="text-5xl font-black text-white tracking-tighter">{currentBalance.toFixed(0)}</h1>
+                <h1 className="text-5xl font-black text-white tracking-tighter">
+                    {loading && !user ? '...' : currentBalance.toFixed(0)}
+                </h1>
                 <span className="text-blue-500 font-black italic tracking-widest text-[10px]">USDT-PTS</span>
             </div>
 
