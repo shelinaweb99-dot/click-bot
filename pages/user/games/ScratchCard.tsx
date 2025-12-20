@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { getCurrentUserId, getAdSettings, playMiniGame } from '../../../services/mockDb';
 import { AdSettings } from '../../../types';
 import { AdSimulator } from '../../../components/AdSimulator';
-import { ArrowLeft, Gift } from 'lucide-react';
+import { ArrowLeft, Gift, Sparkles, Trophy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const ScratchCard: React.FC = () => {
@@ -30,63 +30,68 @@ export const ScratchCard: React.FC = () => {
   const onAdComplete = async () => {
     setShowAd(false);
     if (!userId) return;
-    
     const res = await playMiniGame(userId, 'scratch');
     setResult(res);
     setScratched(true);
   };
 
-  const resetCard = () => {
-      setScratched(false);
-      setResult(null);
-  };
-
-  if (!adSettings) return <div className="text-white text-center mt-10">Loading...</div>;
+  if (!adSettings) return null;
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] space-y-8">
-        <button onClick={() => navigate('/games')} className="absolute top-4 left-4 text-gray-400 hover:text-white flex items-center gap-2">
-            <ArrowLeft /> Back
+    <div className="flex flex-col items-center justify-center min-h-[75vh] space-y-10 px-4 relative">
+        <button onClick={() => navigate('/games')} className="absolute top-0 left-0 text-gray-500 hover:text-white flex items-center gap-2 font-black text-[10px] uppercase tracking-widest p-2">
+            <ArrowLeft size={16} /> Back
         </button>
 
-        <h1 className="text-3xl font-bold text-white">Scratch & Win</h1>
+        <div className="text-center space-y-1">
+            <h1 className="text-4xl font-black text-white tracking-tighter uppercase">LUCKY REVEAL</h1>
+            <p className="text-emerald-500 text-[10px] font-black uppercase tracking-[0.3em]">Reveal your secret bonus</p>
+        </div>
 
-        <div className="relative w-64 h-64 cursor-pointer" onClick={handleScratch}>
-            {/* Result Layer (Bottom) */}
-            <div className="absolute inset-0 bg-white rounded-xl flex flex-col items-center justify-center p-4">
-                 {result ? (
-                     <>
-                        <Gift className={`w-16 h-16 ${result.success ? 'text-green-500' : 'text-gray-400'}`} />
-                        <p className={`mt-2 font-bold text-xl ${result.success ? 'text-green-600' : 'text-red-500'}`}>
-                            {result.success ? `+${result.reward} PTS` : 'Limit Reached'}
-                        </p>
-                     </>
-                 ) : (
-                    <div className="animate-pulse text-gray-400">???</div>
-                 )}
-            </div>
-
-            {/* Scratch Layer (Top) */}
-            {!scratched && (
-                <div className="absolute inset-0 bg-gray-400 rounded-xl flex items-center justify-center hover:bg-gray-400/90 transition">
-                    <div className="text-center">
-                        <Gift className="w-12 h-12 text-gray-600 mx-auto mb-2" />
-                        <p className="text-gray-700 font-bold text-lg">Click to Scratch</p>
+        <div className="relative group w-full max-w-[300px]">
+            {/* The Card */}
+            <div 
+              onClick={handleScratch}
+              className={`aspect-square w-full rounded-[2.5rem] p-4 flex flex-col items-center justify-center relative transition-all duration-700 cursor-pointer overflow-hidden ${
+                scratched 
+                ? 'bg-white shadow-[0_0_50px_rgba(16,185,129,0.2)]' 
+                : 'bg-emerald-600 shadow-2xl group-active:scale-95'
+              }`}
+            >
+                {scratched ? (
+                    <div className="text-center space-y-6 animate-in zoom-in duration-500">
+                        <div className="relative">
+                            <Sparkles className="text-emerald-500 absolute -top-4 -left-4 animate-bounce" size={24} />
+                            <Trophy className="text-emerald-500 w-24 h-24 mx-auto" />
+                            <Sparkles className="text-emerald-500 absolute -bottom-4 -right-4 animate-bounce delay-100" size={24} />
+                        </div>
+                        <div>
+                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest mb-1">You Found</p>
+                            <h3 className="text-5xl font-black text-emerald-600 tracking-tighter">+{result?.reward || 0}</h3>
+                            <p className="text-emerald-500/50 font-black italic text-sm mt-1 uppercase">USDT-PTS</p>
+                        </div>
                     </div>
-                </div>
-            )}
+                ) : (
+                    <div className="text-center space-y-4">
+                        <div className="bg-white/20 p-8 rounded-full backdrop-blur-md border border-white/20">
+                            <Gift className="text-white w-20 h-20" />
+                        </div>
+                        <p className="text-white font-black text-xs uppercase tracking-[0.2em] animate-pulse">Tap To Reveal</p>
+                    </div>
+                )}
+                
+                {/* Overlay Texture */}
+                <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(circle_at_2px_2px,white_1px,transparent_0)] bg-[size:24px_24px]"></div>
+            </div>
         </div>
 
         {scratched && (
-            <div className="text-center">
-                <p className="text-gray-400 mb-4">{result?.message}</p>
-                <button 
-                    onClick={resetCard}
-                    className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg"
-                >
-                    Play Again
-                </button>
-            </div>
+            <button 
+                onClick={() => { setScratched(false); setResult(null); }}
+                className="w-full max-w-[300px] bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-[0.3em] py-5 rounded-[2rem] shadow-xl shadow-emerald-900/20 active:scale-95 transition-all"
+            >
+                Try Another Card
+            </button>
         )}
 
         <AdSimulator isOpen={showAd} onComplete={onAdComplete} settings={adSettings} />

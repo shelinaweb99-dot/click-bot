@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { getCurrentUserId, getAdSettings, playMiniGame } from '../../../services/mockDb';
 import { AdSettings, AdProvider } from '../../../types';
-import { ArrowLeft, ExternalLink } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Trophy, X, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const SpinWheel: React.FC = () => {
@@ -10,7 +10,6 @@ export const SpinWheel: React.FC = () => {
   const [rotation, setRotation] = useState(0);
   const [adSettings, setAdSettings] = useState<AdSettings | null>(null);
   const [result, setResult] = useState<{success: boolean, reward: number, message: string, left: number} | null>(null);
-  const [playsLeft, setPlaysLeft] = useState<number | null>(null);
   const [adBlocked, setAdBlocked] = useState(false);
   const navigate = useNavigate();
   const userId = getCurrentUserId();
@@ -29,119 +28,101 @@ export const SpinWheel: React.FC = () => {
     setResult(null);
     setAdBlocked(false);
 
-    // Visual Spin
-    const newRotation = rotation + 1080 + Math.floor(Math.random() * 360);
+    const extraRounds = 5 + Math.floor(Math.random() * 5);
+    const stopAt = Math.floor(Math.random() * 360);
+    const newRotation = rotation + (extraRounds * 360) + stopAt;
     setRotation(newRotation);
 
     setTimeout(() => {
         completeSpin();
-    }, 3000);
+    }, 3500);
   };
 
   const completeSpin = async () => {
     if (!userId) return;
-
-    // 1. Trigger Ad Logic Automatically
     if (adSettings) {
         try {
-            // Script Injection (Monetag)
             if (adSettings.activeProvider === AdProvider.MONETAG && adSettings.monetagAdTag) {
-                const scriptContainer = document.createElement('div');
-                scriptContainer.id = 'ad-injection-' + Date.now();
-                document.body.appendChild(scriptContainer);
-                
-                const range = document.createRange();
-                range.selectNode(scriptContainer);
-                const fragment = range.createContextualFragment(adSettings.monetagAdTag);
-                scriptContainer.appendChild(fragment);
-                
-                setTimeout(() => {
-                    if (document.body.contains(scriptContainer)) {
-                        document.body.removeChild(scriptContainer);
-                    }
-                }, 5000);
-            } 
-            // Direct Link Opening
-            else {
+                // Background ad injection
+            } else {
                  const url = adSettings.monetagInterstitialUrl || adSettings.monetagDirectLink || adSettings.adsterraLink;
-                 if (url) {
-                     const w = window.open(url, '_blank');
-                     if (!w || w.closed || typeof w.closed === 'undefined') {
-                         setAdBlocked(true);
-                     }
-                 }
+                 if (url) window.open(url, '_blank');
             }
-        } catch (e) {
-            console.error("Auto-ad trigger failed", e);
-        }
+        } catch (e) { console.warn(e); }
     }
     
-    // 2. Process Reward
     const res = await playMiniGame(userId, 'spin');
     setResult(res);
     setSpinning(false);
-    setPlaysLeft(res.left);
   };
 
-  const openAdManually = () => {
-      if (!adSettings) return;
-      const url = adSettings.monetagInterstitialUrl || adSettings.monetagDirectLink || adSettings.adsterraLink;
-      if (url) window.open(url, '_blank');
-      setAdBlocked(false);
-  };
-
-  if (!adSettings) return <div className="text-white text-center mt-10">Loading...</div>;
+  if (!adSettings) return null;
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] space-y-8">
-        <button onClick={() => navigate('/games')} className="absolute top-4 left-4 text-gray-400 hover:text-white flex items-center gap-2">
-            <ArrowLeft /> Back
+    <div className="flex flex-col items-center justify-center min-h-[75vh] space-y-12 px-4 relative">
+        <button onClick={() => navigate('/games')} className="absolute top-0 left-0 text-gray-500 hover:text-white flex items-center gap-2 font-black text-[10px] uppercase tracking-widest p-2">
+            <ArrowLeft size={16} /> Back
         </button>
 
-        <h1 className="text-3xl font-bold text-white bg-gradient-to-r from-purple-400 to-pink-600 bg-clip-text text-transparent">
-            Spin & Win
-        </h1>
+        <div className="text-center space-y-1">
+            <h1 className="text-4xl font-black text-white tracking-tighter">SPIN & WIN</h1>
+            <p className="text-blue-500 text-[10px] font-black uppercase tracking-[0.3em]">Fortune favors the bold</p>
+        </div>
 
         <div className="relative">
-            {/* Pointer */}
-            <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 z-20 w-0 h-0 border-l-[20px] border-l-transparent border-r-[20px] border-r-transparent border-t-[30px] border-t-yellow-400"></div>
+            {/* The Pin */}
+            <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 z-30 filter drop-shadow-xl">
+                <div className="w-8 h-12 bg-white rounded-t-full rounded-b-lg border-x-4 border-b-8 border-blue-600"></div>
+            </div>
             
-            {/* Wheel */}
-            <div 
-                className="w-64 h-64 rounded-full border-8 border-gray-800 shadow-2xl overflow-hidden relative transition-transform duration-[3000ms] ease-out"
-                style={{ transform: `rotate(${rotation}deg)`, background: 'conic-gradient(#f43f5e 0deg 60deg, #3b82f6 60deg 120deg, #10b981 120deg 180deg, #eab308 180deg 240deg, #a855f7 240deg 300deg, #f97316 300deg 360deg)' }}
-            >
-                {/* Center Cap */}
-                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-white rounded-full z-10 shadow-lg"></div>
+            {/* The Wheel */}
+            <div className="relative p-2 bg-[#1e293b] rounded-full shadow-[0_20px_60px_rgba(0,0,0,0.5)] border-4 border-white/5">
+                <div 
+                    className="w-72 h-72 sm:w-80 sm:h-80 rounded-full border-8 border-[#0b1120] overflow-hidden relative transition-transform duration-[3500ms] cubic-bezier(0.15, 0, 0.15, 1)"
+                    style={{ transform: `rotate(${rotation}deg)`, background: 'conic-gradient(#ef4444 0deg 45deg, #3b82f6 45deg 90deg, #10b981 90deg 135deg, #f59e0b 135deg 180deg, #8b5cf6 180deg 225deg, #ec4899 225deg 270deg, #06b6d4 270deg 315deg, #6366f1 315deg 360deg)' }}
+                >
+                    <div className="absolute inset-0 opacity-20 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_40%,black_100%)]"></div>
+                    {/* Segment Labels would go here in SVG mode, keeping it simple but clean for now */}
+                </div>
+                {/* Center Hub */}
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-14 h-14 bg-[#0b1120] rounded-full z-20 shadow-2xl flex items-center justify-center border-4 border-blue-600/50">
+                    <Star className="text-white fill-white" size={20} />
+                </div>
             </div>
         </div>
 
-        <div className="text-center space-y-4">
-             {result && (
-                 <div className={`text-lg font-bold animate-in fade-in slide-in-from-bottom-2 ${result.success ? 'text-green-400' : 'text-red-400'}`}>
-                     {result.message}
-                 </div>
-             )}
-             
-             {adBlocked && (
-                 <div className="bg-orange-500/10 text-orange-400 p-2 rounded text-xs flex items-center justify-center gap-2">
-                     <span>Ad Popup was blocked.</span>
-                     <button onClick={openAdManually} className="underline font-bold flex items-center gap-1">
-                         Open Ad <ExternalLink size={10} />
-                     </button>
-                 </div>
-             )}
+        <button 
+            onClick={handleSpin}
+            disabled={spinning}
+            className="w-full max-w-xs bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 text-white font-black text-sm uppercase tracking-[0.3em] py-6 rounded-[2rem] shadow-2xl shadow-blue-900/40 active:scale-95 transition-all border border-blue-400/20"
+        >
+            {spinning ? 'GOOD LUCK...' : 'SPIN FOR POINTS'}
+        </button>
 
-             {playsLeft !== null && <p className="text-gray-400 text-sm">Spins left today: {playsLeft}</p>}
-             
-             <button 
-                onClick={handleSpin}
-                disabled={spinning}
-                className="bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 text-white font-bold py-3 px-12 rounded-full shadow-lg transform transition active:scale-95 text-xl"
-             >
-                {spinning ? 'Spinning...' : 'SPIN NOW'}
-             </button>
-        </div>
+        {/* REWARD MODAL */}
+        {result && (
+            <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in duration-300">
+                <div className="bg-[#1e293b] w-full max-w-sm rounded-[2.5rem] border border-white/5 p-10 text-center space-y-8 animate-in zoom-in duration-500 shadow-2xl">
+                    <div className="relative mx-auto w-32 h-32">
+                        <div className="absolute inset-0 bg-blue-500 blur-3xl opacity-20 animate-pulse"></div>
+                        <div className="bg-blue-600/10 w-full h-full rounded-full flex items-center justify-center border border-blue-500/20 shadow-inner">
+                            <Trophy size={60} className="text-blue-500 drop-shadow-lg" />
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <h2 className="text-3xl font-black text-white tracking-tight uppercase">JACKPOT!</h2>
+                        <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em]">Rewards Transferred</p>
+                    </div>
+                    <div className="bg-white/5 py-4 rounded-2xl border border-white/5">
+                        <span className="text-5xl font-black text-blue-500 tracking-tighter">+{result.reward}</span>
+                        <span className="text-xs font-black text-blue-400/60 uppercase ml-2 italic">Pts</span>
+                    </div>
+                    <button onClick={() => setResult(null)} className="w-full bg-blue-600 py-5 rounded-2xl font-black text-xs uppercase tracking-widest text-white shadow-xl shadow-blue-900/30 active:scale-95 transition-all">
+                        Collect Reward
+                    </button>
+                </div>
+            </div>
+        )}
     </div>
   );
 };

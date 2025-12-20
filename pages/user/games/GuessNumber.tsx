@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { getCurrentUserId, getAdSettings, playMiniGame } from '../../../services/mockDb';
 import { AdSettings } from '../../../types';
 import { AdSimulator } from '../../../components/AdSimulator';
-import { ArrowLeft, HelpCircle } from 'lucide-react';
+import { ArrowLeft, Lock, Unlock, Trophy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const GuessNumber: React.FC = () => {
@@ -22,8 +22,11 @@ export const GuessNumber: React.FC = () => {
     init();
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
+  const handleKeyPress = (num: string) => {
+      if (guess.length < 1) setGuess(num);
+  };
+
+  const handleUnlock = () => {
       if (!guess) return;
       setShowAd(true);
   };
@@ -31,55 +34,76 @@ export const GuessNumber: React.FC = () => {
   const onAdComplete = async () => {
     setShowAd(false);
     if (!userId) return;
-    
-    // Logic: In this simplified "Click to earn" version, the guess is just for fun/engagement
-    // The reward is determined by admin settings random range regardless of guess correctness in this mock version
-    // To make it real, we'd check if guess == random_number. 
-    // For earning apps, usually "winning" is guaranteed after ad view.
-    
     const res = await playMiniGame(userId, 'guess');
     setResult(res);
-    setGuess('');
   };
 
-  if (!adSettings) return <div className="text-white text-center mt-10">Loading...</div>;
+  if (!adSettings) return null;
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] space-y-6">
-        <button onClick={() => navigate('/games')} className="absolute top-4 left-4 text-gray-400 hover:text-white flex items-center gap-2">
-            <ArrowLeft /> Back
+    <div className="flex flex-col items-center justify-center min-h-[75vh] space-y-8 px-4 relative">
+        <button onClick={() => navigate('/games')} className="absolute top-0 left-0 text-gray-500 hover:text-white flex items-center gap-2 font-black text-[10px] uppercase tracking-widest p-2">
+            <ArrowLeft size={16} /> Back
         </button>
 
-        <h1 className="text-3xl font-bold text-white">Guess The Number</h1>
-        <p className="text-gray-400 text-center max-w-xs">I'm thinking of a number between 1 and 10. Guess it to win points!</p>
-
-        <div className="bg-gray-800 p-8 rounded-xl border border-gray-700 w-full max-w-sm text-center">
-            <HelpCircle className="w-16 h-16 text-orange-500 mx-auto mb-6" />
-            
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <input 
-                    type="number" 
-                    min="1" 
-                    max="10"
-                    placeholder="Enter 1-10"
-                    value={guess}
-                    onChange={(e) => setGuess(e.target.value)}
-                    className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-center text-white text-xl font-bold outline-none focus:border-orange-500"
-                />
-                
-                <button 
-                    type="submit"
-                    className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3 rounded-lg"
-                >
-                    Submit Guess
-                </button>
-            </form>
+        <div className="text-center space-y-1">
+            <h1 className="text-4xl font-black text-white tracking-tighter uppercase">VAULT BREAKER</h1>
+            <p className="text-orange-500 text-[10px] font-black uppercase tracking-[0.3em]">Pick 1 Number to crack it</p>
         </div>
 
+        <div className="w-full max-w-[320px] bg-[#1e293b] p-8 rounded-[3rem] border border-white/5 shadow-2xl space-y-8">
+            {/* Display */}
+            <div className="bg-[#0b1120] p-6 rounded-[2rem] border border-white/5 text-center shadow-inner relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1 bg-orange-500/30"></div>
+                <div className="flex items-center justify-center gap-4 mb-2">
+                    {guess ? <Unlock className="text-orange-500 animate-pulse" size={24} /> : <Lock className="text-gray-700" size={24} />}
+                </div>
+                <div className="text-4xl font-black text-white font-mono tracking-widest">
+                    {guess || '0'}
+                </div>
+                <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest mt-3">Target: 1 - 9</p>
+            </div>
+
+            {/* Keypad */}
+            <div className="grid grid-cols-3 gap-3">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
+                    <button 
+                      key={num}
+                      onClick={() => handleKeyPress(num.toString())}
+                      className={`aspect-square rounded-2xl flex items-center justify-center text-xl font-black transition-all active:scale-90 border border-white/5 ${guess === num.toString() ? 'bg-orange-600 text-white shadow-lg shadow-orange-900/30' : 'bg-[#0b1120] text-gray-400 hover:text-white hover:bg-white/5'}`}
+                    >
+                        {num}
+                    </button>
+                ))}
+            </div>
+
+            <button 
+              onClick={handleUnlock}
+              disabled={!guess}
+              className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-gray-800 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-2xl shadow-xl transition-all active:scale-95"
+            >
+                BREACH VAULT
+            </button>
+        </div>
+
+        {/* WIN MODAL */}
         {result && (
-            <div className={`p-4 rounded-xl border ${result.success ? 'bg-green-500/10 border-green-500 text-green-400' : 'bg-red-500/10 border-red-500 text-red-400'}`}>
-                <p className="font-bold text-center">{result.message}</p>
-                {result.success && <p className="text-xs text-center mt-1">Plays left: {result.left}</p>}
+            <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in">
+                <div className="bg-[#1e293b] w-full max-w-sm rounded-[3rem] border border-orange-500/20 p-10 text-center space-y-6 shadow-2xl">
+                    <div className="w-24 h-24 bg-orange-600/20 rounded-full flex items-center justify-center mx-auto border border-orange-500/20">
+                        <Trophy size={48} className="text-orange-500" />
+                    </div>
+                    <div>
+                        <h2 className="text-2xl font-black text-white tracking-tight">VAULT CRACKED</h2>
+                        <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest mt-1">Reward Claimed</p>
+                    </div>
+                    <div className="text-5xl font-black text-orange-500 tabular-nums tracking-tighter">
+                        +{result.reward} <span className="text-sm text-gray-700">Pts</span>
+                    </div>
+                    <button onClick={() => {setResult(null); setGuess('');}} className="w-full bg-orange-600 py-5 rounded-2xl font-black text-xs uppercase tracking-widest text-white shadow-xl active:scale-95 transition-all">
+                        Reset System
+                    </button>
+                </div>
             </div>
         )}
 
