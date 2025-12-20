@@ -37,7 +37,10 @@ const UserSchema = new mongoose.Schema({
     blocked: { type: Boolean, default: false },
     lastDailyCheckIn: String,
     dailyStreak: { type: Number, default: 0 },
-    ipAddress: String
+    ipAddress: String,
+    name: String,
+    country: String,
+    joinedAt: String
 }, { minimize: false, strict: false });
 
 const TaskSchema = new mongoose.Schema({
@@ -57,6 +60,17 @@ const TransactionSchema = new mongoose.Schema({
     date: String
 }, { strict: false });
 
+const WithdrawalSchema = new mongoose.Schema({
+    id: { type: String, required: true, unique: true },
+    userId: { type: String, index: true },
+    userName: String,
+    amount: Number,
+    method: String,
+    details: String,
+    status: { type: String, default: 'PENDING' },
+    date: String
+}, { minimize: false, strict: false });
+
 const SettingSchema = new mongoose.Schema({
     _id: String,
     data: mongoose.Schema.Types.Mixed
@@ -66,7 +80,7 @@ const User = mongoose.models.User || mongoose.model('User', UserSchema);
 const Task = mongoose.models.Task || mongoose.model('Task', TaskSchema);
 const Transaction = mongoose.models.Transaction || mongoose.model('Transaction', TransactionSchema);
 const Setting = mongoose.models.Setting || mongoose.model('Setting', SettingSchema);
-const Withdrawal = mongoose.models.Withdrawal || mongoose.model('Withdrawal', new mongoose.Schema({ id: String }, { strict: false }));
+const Withdrawal = mongoose.models.Withdrawal || mongoose.model('Withdrawal', WithdrawalSchema);
 const Short = mongoose.models.Short || mongoose.model('Short', new mongoose.Schema({ id: String }, { strict: false }));
 const Announcement = mongoose.models.Announcement || mongoose.model('Announcement', new mongoose.Schema({ id: String }, { strict: false }));
 
@@ -179,9 +193,26 @@ export default async function handler(req, res) {
             case 'createWithdrawal': {
                 const amount = Number(data.request.amount);
                 if (currentUser.balance < amount) return res.status(400).json({ message: "Insufficient balance." });
-                await Withdrawal.create(data.request);
+                
+                // Explicitly set initial status and ensure numeric amount
+                const withdrawalPayload = {
+                    ...data.request,
+                    amount,
+                    status: 'PENDING',
+                    userId: currentUser.id,
+                    userName: currentUser.name || currentUser.email
+                };
+
+                await Withdrawal.create(withdrawalPayload);
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: -amount } });
-                await Transaction.create({ id: 'tx_w_' + Date.now(), userId: currentUser.id, amount, type: 'WITHDRAWAL', description: 'Redemption Request', date: new Date().toISOString() });
+                await Transaction.create({ 
+                    id: 'tx_w_' + Date.now(), 
+                    userId: currentUser.id, 
+                    amount, 
+                    type: 'WITHDRAWAL', 
+                    description: `Cashout: ${data.request.method}`, 
+                    date: new Date().toISOString() 
+                });
                 return res.json({ success: true });
             }
 
@@ -197,15 +228,36 @@ export default async function handler(req, res) {
 
             case 'getAllUsers':
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
-                return res.json(await User.find({}).limit(100));
+                return res.json(await User.find({}).limit(200));
 
             case 'getAllWithdrawals':
-                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
-                return res.json(await Withdrawal.find({}).sort({ date: -1 }));
+                // Logic Fix: Admins see all, Users see their own history.
+                if (currentUser.role === 'ADMIN') {
+                    return res.json(await Withdrawal.find({}).sort({ date: -1 }));
+                } else {
+                    return res.json(await Withdrawal.find({ userId: currentUser.id }).sort({ date: -1 }));
+                }
 
             case 'updateWithdrawal':
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
-                await Withdrawal.updateOne({ id: data.id }, { $set: { status: data.status } });
+                const updated = await Withdrawal.findOneAndUpdate(
+                    { id: data.id }, 
+                    { $set: { status: data.status } },
+                    { new: true }
+                );
+                
+                // Refund points if rejected
+                if (data.status === 'REJECTED' && updated) {
+                    await User.updateOne({ id: updated.userId }, { $inc: { balance: updated.amount } });
+                    await Transaction.create({ 
+                        id: 'tx_r_' + Date.now(), 
+                        userId: updated.userId, 
+                        amount: updated.amount, 
+                        type: 'BONUS', 
+                        description: `Refund: Withdrawal Rejected`, 
+                        date: new Date().toISOString() 
+                    });
+                }
                 return res.json({ success: true });
 
             case 'saveUser':

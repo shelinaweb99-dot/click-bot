@@ -42,9 +42,9 @@ export const UserWallet: React.FC = () => {
             setSystemSettings(settings);
         }
 
+        // history is already filtered by current user in the backend now
         if (Array.isArray(allWithdrawals)) {
-            const myWithdrawals = allWithdrawals.filter(w => w.userId === userId);
-            setHistory([...myWithdrawals].reverse());
+            setHistory([...allWithdrawals]);
         }
 
         // Logic fix: Ensure methods is an array and filter active ones
@@ -55,11 +55,10 @@ export const UserWallet: React.FC = () => {
         
         if (activeMethods.length > 0 && !methodId) {
             setMethodId(activeMethods[0].id);
-        } else if (activeMethods.length > 0 && !activeMethods.find(m => m.id === methodId)) {
-            setMethodId(activeMethods[0].id);
         }
-    } catch (e) {
+    } catch (e: any) {
         console.error("Wallet sync error", e);
+        if (isMounted.current) setMessage("Failed to sync wallet data. Please try again.");
     } finally {
         if (isMounted.current) setLoading(false);
     }
@@ -98,24 +97,21 @@ export const UserWallet: React.FC = () => {
             setIsSubmitting(false);
             return;
         }
-        if ((freshUser.balance || 0) < val) {
+        if ((freshUser?.balance || 0) < val) {
             setMessage('Insufficient balance.');
             setIsSubmitting(false);
             return;
         }
 
-        const req: WithdrawalRequest = {
+        const req: Partial<WithdrawalRequest> = {
             id: 'w_' + Date.now(),
-            userId: freshUser.id,
-            userName: freshUser.name || 'User',
             amount: val,
             method: selectedMethod?.name || 'Standard',
             details,
-            status: WithdrawalStatus.PENDING,
             date: new Date().toISOString()
         };
         
-        await createWithdrawal(req);
+        await createWithdrawal(req as WithdrawalRequest);
         if (isMounted.current) {
             setMessage('Success! Request submitted.');
             setAmount('');
@@ -138,7 +134,7 @@ export const UserWallet: React.FC = () => {
   );
 
   const exchangeRate = systemSettings?.pointsPerDollar || 1000;
-  const currentBalance = user?.balance ?? 0;
+  const currentBalance = Number(user?.balance) || 0;
   const currentUSD = currentBalance / exchangeRate;
 
   return (
@@ -154,13 +150,13 @@ export const UserWallet: React.FC = () => {
             <p className="text-gray-500 text-[9px] font-black uppercase tracking-[0.3em] mb-2 opacity-60">Total Points Balance</p>
             <div className="flex items-baseline justify-center gap-2">
                 <h1 className="text-5xl font-black text-white tracking-tighter">
-                    {loading && !user ? '...' : currentBalance.toFixed(0)}
+                    {currentBalance.toFixed(0)}
                 </h1>
                 <span className="text-blue-500 font-black italic tracking-widest text-[10px]">USDT-PTS</span>
             </div>
 
-            <div className="absolute -top-4 -right-4 bg-white/5 p-8 rounded-full blur-2xl"></div>
-            <div className="absolute -bottom-4 -left-4 bg-blue-500/5 p-8 rounded-full blur-2xl"></div>
+            <div className="absolute -top-4 -right-4 bg-white/5 p-8 rounded-full blur-2xl opacity-20"></div>
+            <div className="absolute -bottom-4 -left-4 bg-blue-500/5 p-8 rounded-full blur-2xl opacity-20"></div>
        </div>
 
        {/* 2. Redeem Points Card */}
@@ -204,6 +200,7 @@ export const UserWallet: React.FC = () => {
                                 onChange={e => setMethodId(e.target.value)}
                                 className="w-full bg-[#030712] text-white rounded-[1.5rem] p-5 pl-14 border border-white/5 focus:border-blue-500/50 outline-none font-black text-xs uppercase appearance-none shadow-inner transition-all"
                             >
+                                <option value="" disabled>Select Method</option>
                                 {availableMethods.map(m => <option key={m.id} value={m.id} className="bg-gray-900">{m.name}</option>)}
                            </select>
                            <div className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-700 pointer-events-none">
@@ -213,7 +210,7 @@ export const UserWallet: React.FC = () => {
                    </div>
                    
                    <div className="space-y-2 px-1">
-                       <label className="text-gray-500 text-[9px] font-black uppercase tracking-[0.2em] ml-1">Cashout Amount</label>
+                       <label className="text-gray-500 text-[9px] font-black uppercase tracking-[0.2em] ml-1">Cashout Amount (Points)</label>
                        <input 
                             type="number" 
                             value={amount}
@@ -238,7 +235,7 @@ export const UserWallet: React.FC = () => {
 
                    <button 
                         type="submit" 
-                        disabled={isSubmitting || availableMethods.length === 0}
+                        disabled={isSubmitting || !methodId}
                         className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 text-white font-black text-[10px] uppercase tracking-[0.3em] py-6 rounded-[1.8rem] transition-all active:scale-[0.98] shadow-2xl shadow-blue-900/30 mt-4 border border-blue-400/10"
                    >
                        {isSubmitting ? 'Verifying...' : 'Initiate Withdrawal'}
@@ -250,12 +247,12 @@ export const UserWallet: React.FC = () => {
        {/* 3. Transaction History */}
        <div className="bg-[#111827] p-8 rounded-[2.5rem] border border-white/5 shadow-xl">
            <h3 className="text-white font-black text-[9px] uppercase tracking-[0.2em] mb-8 flex items-center gap-3 font-bold">
-               Transaction Log
+               Your Redemption History
            </h3>
            <div className="space-y-4">
                {history.length === 0 ? (
                     <div className="text-center py-12 opacity-20">
-                        <p className="text-[10px] font-black uppercase tracking-widest italic">No Records Found</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest italic">No Requests Found</p>
                     </div>
                ) : (
                 history.map(item => (
@@ -265,7 +262,7 @@ export const UserWallet: React.FC = () => {
                             <p className="text-[9px] text-gray-700 font-black uppercase mt-1 tracking-widest">{new Date(item.date).toLocaleDateString()}</p>
                         </div>
                         <div className="text-right">
-                             <p className="text-sm font-black text-white mb-1">{item.amount.toFixed(0)} <span className="text-[9px] text-gray-700 uppercase">Pts</span></p>
+                             <p className="text-sm font-black text-white mb-1">{Number(item.amount).toFixed(0)} <span className="text-[9px] text-gray-700 uppercase">Pts</span></p>
                              <span className={`px-2.5 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest border ${
                                  item.status === 'APPROVED' ? 'bg-green-500/5 text-green-500 border-green-500/20' :
                                  item.status === 'REJECTED' ? 'bg-red-500/5 text-red-500 border-red-500/20' :
