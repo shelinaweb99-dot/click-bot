@@ -14,12 +14,12 @@ async function connectToDatabase() {
         mongoose.set('strictQuery', true);
         const opts = {
             serverSelectionTimeoutMS: 20000,
-            socketTimeoutMS: 45000,
+            socketTimeoutMS: 60000, // Longer socket timeout for reliability
             connectTimeoutMS: 20000,
         };
         await mongoose.connect(uri, opts);
         cachedDb = mongoose.connection;
-        console.log("DB Connected");
+        console.log("DB Connected Successfully");
         return cachedDb;
     } catch (e) {
         console.error("DB Connection Error:", e);
@@ -76,7 +76,12 @@ async function authenticateUser(req) {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
     const token = authHeader.split(' ')[1];
-    return await User.findOne({ sessionToken: token }).select('+sessionToken');
+    if (!token) return null;
+    try {
+        return await User.findOne({ sessionToken: token }).select('+sessionToken');
+    } catch (e) {
+        return null;
+    }
 }
 
 // --- 4. GLOBAL HANDLER ---
@@ -110,6 +115,7 @@ export default async function handler(req, res) {
                     sessionToken: newToken,
                     joinedAt: new Date().toISOString(),
                     role: email.toLowerCase() === 'admin@admin.com' ? 'ADMIN' : 'USER',
+                    balance: 0,
                     ...userData
                 });
             } else {
@@ -143,7 +149,7 @@ export default async function handler(req, res) {
                 if (!task) return res.status(404).json({ message: "Task was removed by admin." });
                 
                 const existing = await Transaction.findOne({ userId: currentUser.id, taskId: data.taskId });
-                if (existing) return res.status(400).json({ message: "Task already completed today." });
+                if (existing) return res.status(400).json({ message: "Reward already claimed." });
 
                 const reward = Number(task.reward) || 0;
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: reward } });
@@ -161,7 +167,7 @@ export default async function handler(req, res) {
 
             case 'createWithdrawal': {
                 const amount = Number(data.request.amount);
-                if (currentUser.balance < amount) return res.status(400).json({ message: "Insufficient balance for this withdrawal." });
+                if (currentUser.balance < amount) return res.status(400).json({ message: "Insufficient balance." });
                 await Withdrawal.create(data.request);
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: -amount } });
                 await Transaction.create({ id: 'tx_w_' + Date.now(), userId: currentUser.id, amount, type: 'WITHDRAWAL', description: 'Redemption Request', date: new Date().toISOString() });
@@ -169,42 +175,47 @@ export default async function handler(req, res) {
             }
 
             case 'saveTask':
-                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access denied." });
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
                 await Task.findOneAndUpdate({ id: data.payload.id }, { $set: data.payload }, { upsert: true, new: true });
                 return res.json({ success: true });
 
             case 'deleteTask':
-                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access denied." });
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
                 await Task.deleteOne({ id: data.id });
                 return res.json({ success: true });
 
             case 'saveSettings':
-                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access denied." });
-                await Setting.findOneAndUpdate({ _id: data.key }, { $set: { data: data.payload } }, { upsert: true, new: true });
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
+                // Use a atomic update to avoid data loss
+                await Setting.findOneAndUpdate(
+                    { _id: data.key }, 
+                    { $set: { data: data.payload } }, 
+                    { upsert: true, new: true }
+                );
                 return res.json({ success: true });
 
             case 'getAllUsers':
-                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access denied." });
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
                 return res.json(await User.find({}).limit(100));
 
             case 'getAllWithdrawals':
-                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access denied." });
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
                 return res.json(await Withdrawal.find({}).sort({ date: -1 }));
 
             case 'updateWithdrawal':
-                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access denied." });
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
                 await Withdrawal.updateOne({ id: data.id }, { $set: { status: data.status } });
                 return res.json({ success: true });
 
             case 'saveUser':
-                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access denied." });
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
                 await User.findOneAndUpdate({ id: data.user.id }, { $set: data.user }, { new: true });
                 return res.json({ success: true });
 
-            default: return res.status(400).json({ message: "Invalid action requested." });
+            default: return res.status(400).json({ message: "Unknown action." });
         }
     } catch (e) {
-        console.error("API Error:", e);
-        return res.status(500).json({ success: false, message: e.message || "An internal error occurred." });
+        console.error("Critical API Error:", e);
+        return res.status(500).json({ success: false, message: "System core failed: " + e.message });
     }
 }

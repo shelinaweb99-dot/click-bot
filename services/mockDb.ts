@@ -83,7 +83,8 @@ export const updateWithdrawalStatus = async (id: string, status: string) => apiC
 const getSetting = async (key: string, defaultVal: any) => {
     try {
         const data = await apiCall('getSettings', { key });
-        return (data && Object.keys(data).length) ? data : defaultVal;
+        // Ensure we always return an object even if empty to avoid crashes
+        return (data && typeof data === 'object') ? data : defaultVal;
     } catch { return defaultVal; }
 };
 
@@ -124,13 +125,18 @@ export const fetchYouTubeMetadata = async (videoId: string) => null;
 export const verifyTelegramMembership = async (c: string, u: number) => ({ success: true });
 export const processReferral = async (userId: string, code: string) => apiCall('processReferral', { userId, code });
 
-// PAYMENT METHODS MANAGEMENT
+// PAYMENT METHODS MANAGEMENT (Consolidated & Hardened)
 export const getPaymentMethods = async (): Promise<WithdrawalMethod[]> => {
-    const data = await getSetting('payment_methods', { methods: [] });
-    // Defensive parsing for diverse MongoDB storage states
+    const data = await apiCall('getSettings', { key: 'payment_methods' });
+    // Look for methods array in either a direct array or a wrapped object
     if (Array.isArray(data)) return data;
     if (data && Array.isArray(data.methods)) return data.methods;
     return [];
+};
+
+export const updateAllPaymentMethods = async (methods: WithdrawalMethod[]) => {
+    // Explicitly wrap the array in a 'methods' key to match getPaymentMethods expectations
+    return apiCall('saveSettings', { key: 'payment_methods', payload: { methods } });
 };
 
 export const savePaymentMethod = async (method: WithdrawalMethod) => {
@@ -143,17 +149,13 @@ export const savePaymentMethod = async (method: WithdrawalMethod) => {
     } else {
         updated = [...current, method];
     }
-    return apiCall('saveSettings', { key: 'payment_methods', payload: { methods: updated } });
+    return updateAllPaymentMethods(updated);
 };
 
 export const deletePaymentMethod = async (id: string) => {
     const current = await getPaymentMethods();
     const updated = current.filter(m => m.id !== id);
-    return apiCall('saveSettings', { key: 'payment_methods', payload: { methods: updated } });
-};
-
-export const updateAllPaymentMethods = async (methods: WithdrawalMethod[]) => {
-    return apiCall('saveSettings', { key: 'payment_methods', payload: { methods } });
+    return updateAllPaymentMethods(updated);
 };
 
 export const extractYouTubeId = (url: string) => {
