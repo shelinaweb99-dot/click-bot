@@ -39,6 +39,9 @@ export const TaskRunner: React.FC = () => {
       interval = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
     } else if (timeLeft === 0 && isTimerRunning) {
         setIsTimerRunning(false);
+        // AUTOMATIC RETURN:
+        setShowViewer(false); 
+        handleVerify(); 
     }
     return () => clearInterval(interval);
   }, [isTimerRunning, timeLeft]);
@@ -193,12 +196,7 @@ export const TaskRunner: React.FC = () => {
                         {timeLeft > 0 && <p className="text-blue-400 text-[9px] font-bold">{timeLeft}s remaining</p>}
                       </div>
                   </div>
-                  <button 
-                    onClick={() => setShowViewer(false)}
-                    className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-xl transition-colors shadow-lg active:scale-90"
-                  >
-                      <X size={20} />
-                  </button>
+                  {/* CLOSE BUTTON REMOVED PER USER REQUEST TO MAKE IT AUTOMATIC */}
               </div>
               <div className="flex-1 bg-white relative">
                   <div className="absolute inset-0 flex flex-col items-center justify-center p-10 text-center -z-10 bg-gray-900">
@@ -215,7 +213,7 @@ export const TaskRunner: React.FC = () => {
               </div>
               <div className="bg-[#1e293b] p-3 text-center border-t border-white/5">
                   <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">
-                      Return to the app after the timer hits 0 to claim your rewards.
+                      Please wait. The window will close automatically when the timer reaches 0.
                   </p>
               </div>
           </div>
