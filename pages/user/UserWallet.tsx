@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { WithdrawalRequest, WithdrawalStatus, WithdrawalMethod, User, SystemSettings } from '../../types';
 import { getCurrentUserId, getUserById, createWithdrawal, getWithdrawals, getPaymentMethods, subscribeToChanges, getSystemSettings } from '../../services/mockDb';
-import { DollarSign, History, Loader2, RefreshCw, CreditCard, AlertCircle, TrendingUp } from 'lucide-react';
+import { History, Loader2, RefreshCw, CreditCard, AlertCircle, TrendingUp, ChevronRight, Landmark } from 'lucide-react';
 
 export const UserWallet: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -24,38 +24,33 @@ export const UserWallet: React.FC = () => {
         if (!isMounted.current) return;
         setLoading(true);
         
-        if (userId) {
-            const userData = await getUserById(userId);
-            if (!isMounted.current) return;
-            setUser(userData);
-            
-            const allWithdrawals = await getWithdrawals();
-            if (!isMounted.current) return;
-            const myWithdrawals = allWithdrawals.filter(w => w.userId === userId);
-            setHistory([...myWithdrawals].reverse());
-        }
-        
-        // Fetch Settings & Payment Channels
-        const [fetchedMethods, settings] = await Promise.all([
+        const [userData, allWithdrawals, fetchedMethods, settings] = await Promise.all([
+            userId ? getUserById(userId) : Promise.resolve(null),
+            getWithdrawals(),
             getPaymentMethods(),
             getSystemSettings()
         ]);
-        
-        if (!isMounted.current) return;
-        setSystemSettings(settings);
 
-        // Ensure we always have an array and only active methods
+        if (!isMounted.current) return;
+
+        if (userData) setUser(userData);
+        if (settings) setSystemSettings(settings);
+
+        if (userId && Array.isArray(allWithdrawals)) {
+            const myWithdrawals = allWithdrawals.filter(w => w.userId === userId);
+            setHistory([...myWithdrawals].reverse());
+        }
+
         const methodsArray = Array.isArray(fetchedMethods) ? fetchedMethods : [];
         const activeMethods = methodsArray.filter(m => m.isEnabled);
         
         setAvailableMethods(activeMethods);
         
-        // Auto-select the first method if none is selected
         if (activeMethods.length > 0 && !methodId) {
             setMethodId(activeMethods[0].id);
         }
     } catch (e) {
-        console.error("Wallet fetch error", e);
+        console.error("Wallet sync error", e);
     } finally {
         if (isMounted.current) setLoading(false);
     }
@@ -95,13 +90,13 @@ export const UserWallet: React.FC = () => {
             return;
         }
         if (freshUser.balance < val) {
-            setMessage('Insufficient balance in wallet.');
+            setMessage('Insufficient balance.');
             setIsSubmitting(false);
             return;
         }
 
         const req: WithdrawalRequest = {
-            id: Date.now().toString(),
+            id: 'w_' + Date.now(),
             userId: freshUser.id,
             userName: freshUser.name || 'User',
             amount: val,
@@ -113,14 +108,14 @@ export const UserWallet: React.FC = () => {
         
         await createWithdrawal(req);
         if (isMounted.current) {
-            setMessage('Success! Withdrawal request pending approval.');
+            setMessage('Request submitted for approval.');
             setAmount('');
             setDetails('');
             fetchData();
         }
 
     } catch (err: any) {
-        if (isMounted.current) setMessage(err.message || 'Payment system error.');
+        if (isMounted.current) setMessage(err.message || 'Processing error.');
     } finally {
         if (isMounted.current) setIsSubmitting(false);
     }
@@ -128,94 +123,103 @@ export const UserWallet: React.FC = () => {
 
   if (loading && !user) return (
     <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
-        <Loader2 className="animate-spin text-blue-500" />
-        <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Updating Ledger...</p>
+        <Loader2 className="animate-spin text-blue-500" size={32} />
+        <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Accessing Ledger...</p>
     </div>
   );
 
+  const exchangeRate = systemSettings?.pointsPerDollar || 1000;
+  const currentUSD = (user?.balance || 0) / exchangeRate;
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-12">
-       {/* Points Card */}
-       <div className="glass-card p-10 rounded-[2.5rem] border border-white/5 text-center relative overflow-hidden shadow-2xl bg-gradient-to-br from-[#1e293b] to-black">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 to-indigo-600"></div>
-            <TrendingUp size={80} className="absolute -right-10 -bottom-10 text-white/5 rotate-12" />
-            
-            <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.2em] mb-3">Total Earnings</p>
-            <div className="flex items-baseline justify-center gap-2">
-                <h1 className="text-6xl font-black text-white tracking-tighter">{(user?.balance || 0).toFixed(0)}</h1>
-                <span className="text-blue-500 font-black italic tracking-widest text-sm">PTS</span>
-            </div>
-            <div className="mt-4 px-6 py-2 bg-blue-600/10 rounded-full inline-block border border-blue-500/10">
-                <p className="text-[10px] text-blue-400 font-black uppercase tracking-widest italic">
-                   Value: ${((user?.balance || 0) / (systemSettings?.pointsPerDollar || 1000)).toFixed(2)} USDT
+    <div className="space-y-6 animate-in fade-in duration-500 pb-16">
+       {/* 1. Value Card (Matched to Screenshot Style) */}
+       <div className="bg-[#111827] p-8 rounded-[2.5rem] border border-white/5 text-center relative overflow-hidden shadow-2xl">
+            <div className="bg-blue-600/10 inline-flex items-center gap-2 px-5 py-2.5 rounded-2xl border border-blue-500/10 mb-5">
+                <p className="text-blue-400 font-black text-[10px] uppercase tracking-widest italic">
+                   Current Value: ${currentUSD.toFixed(2)} USDT
                 </p>
             </div>
+            
+            <p className="text-gray-500 text-[9px] font-black uppercase tracking-[0.3em] mb-2 opacity-60">Total USDT Balance</p>
+            <div className="flex items-baseline justify-center gap-2">
+                <h1 className="text-5xl font-black text-white tracking-tighter">{(user?.balance || 0).toFixed(0)}</h1>
+                <span className="text-blue-500 font-black italic tracking-widest text-[10px]">USDT-PTS</span>
+            </div>
+
+            <div className="absolute -top-4 -right-4 bg-white/5 p-8 rounded-full blur-2xl"></div>
+            <div className="absolute -bottom-4 -left-4 bg-blue-500/5 p-8 rounded-full blur-2xl"></div>
        </div>
 
-       {/* Withdrawal Form */}
-       <div className="glass-card p-8 rounded-[2.5rem] border border-white/5 shadow-xl">
-           <div className="flex justify-between items-center mb-8">
-                <h2 className="text-xl font-black text-white flex items-center gap-3">
-                    <div className="bg-green-500/10 p-2.5 rounded-xl text-green-500 border border-green-500/10">
-                        <DollarSign size={20} />
+       {/* 2. Redeem Points Card */}
+       <div className="bg-[#111827] p-6 sm:p-8 rounded-[2.5rem] border border-white/5 shadow-xl relative">
+           <div className="flex justify-between items-center mb-8 px-2">
+                <div className="flex items-center gap-4">
+                    <div className="bg-green-500/10 p-3 rounded-2xl text-green-500 border border-green-500/10 shadow-lg shadow-green-500/5">
+                        <Landmark size={22} />
                     </div>
-                    Redeem Points
-                </h2>
-                <button onClick={fetchData} className="p-2 text-gray-500 hover:text-white transition-colors">
+                    <h2 className="text-xl font-black text-white tracking-tight uppercase">Redeem Points</h2>
+                </div>
+                <button onClick={fetchData} className="p-3 bg-white/5 rounded-2xl text-gray-500 hover:text-white transition-all active:scale-90 shadow-lg">
                     <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
                 </button>
            </div>
            
            {message && (
-               <div className={`p-5 rounded-2xl text-xs font-bold mb-8 animate-in slide-in-from-top-4 ${message.toLowerCase().includes('success') ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}>
+               <div className={`p-5 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest mb-8 animate-in slide-in-from-top-4 text-center border ${message.toLowerCase().includes('success') ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
                    {message}
                </div>
            )}
 
            {availableMethods.length === 0 && !loading ? (
-               <div className="p-10 text-center bg-orange-500/5 rounded-[2rem] border border-orange-500/10">
-                   <AlertCircle className="mx-auto text-orange-500 mb-4" size={32} />
-                   <p className="text-orange-200 text-xs font-black uppercase tracking-widest">Payouts Currently Paused</p>
-                   <p className="text-gray-600 text-[10px] mt-2 font-medium">Administrator has not enabled any payment channels.</p>
+               <div className="p-10 text-center bg-[#0b1120] rounded-[2rem] border border-white/5 shadow-inner">
+                   <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <AlertCircle className="text-orange-500" size={32} />
+                   </div>
+                   <p className="text-orange-200 text-[11px] font-black uppercase tracking-widest">Payouts Currently Paused</p>
+                   <p className="text-gray-600 text-[9px] mt-2 font-bold uppercase tracking-widest max-w-[180px] mx-auto leading-relaxed">Administrator has not enabled any payment channels.</p>
                </div>
            ) : (
                <form onSubmit={handleWithdraw} className="space-y-6">
-                   <div className="space-y-2">
-                       <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Payment Channel</label>
+                   <div className="space-y-2 px-1">
+                       <label className="text-gray-500 text-[9px] font-black uppercase tracking-[0.2em] ml-1">Payment Channel</label>
                        <div className="relative">
-                           <div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500">
+                           <div className="absolute left-5 top-1/2 -translate-y-1/2 text-blue-500 pointer-events-none">
                                <CreditCard size={20} />
                            </div>
                            <select 
                                 value={methodId} 
                                 onChange={e => setMethodId(e.target.value)}
-                                className="w-full bg-[#030712] text-white rounded-2xl p-5 pl-14 border border-white/5 focus:border-blue-500 outline-none font-bold text-sm appearance-none shadow-inner"
+                                className="w-full bg-[#030712] text-white rounded-[1.5rem] p-5 pl-14 border border-white/5 focus:border-blue-500/50 outline-none font-black text-xs uppercase appearance-none shadow-inner transition-all"
                             >
-                                {availableMethods.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                {availableMethods.map(m => <option key={m.id} value={m.id} className="bg-gray-900">{m.name}</option>)}
                            </select>
+                           <div className="absolute right-5 top-1/2 -translate-y-1/2 text-gray-700 pointer-events-none">
+                               <ChevronRight size={16} className="rotate-90" />
+                           </div>
                        </div>
                    </div>
                    
-                   <div className="space-y-2">
-                       <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Points to Cashout</label>
+                   <div className="space-y-2 px-1">
+                       <label className="text-gray-500 text-[9px] font-black uppercase tracking-[0.2em] ml-1">Cashout Amount</label>
                        <input 
                             type="number" 
                             value={amount}
                             onChange={e => setAmount(e.target.value)}
-                            placeholder={`Min ${systemSettings?.minWithdrawal || 50}`}
-                            className="w-full bg-[#030712] text-white rounded-2xl p-5 border border-white/5 focus:border-blue-500 outline-none font-bold text-sm shadow-inner"
+                            placeholder={`Min ${systemSettings?.minWithdrawal || 50} Pts`}
+                            className="w-full bg-[#030712] text-white rounded-[1.5rem] p-5 border border-white/5 focus:border-blue-500/50 outline-none font-black text-xs shadow-inner transition-all placeholder:text-gray-800"
                             required
                        />
                    </div>
 
-                   <div className="space-y-2">
-                       <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">{selectedMethod?.detailsLabel || 'Wallet / Account'}</label>
+                   <div className="space-y-2 px-1">
+                       <label className="text-gray-500 text-[9px] font-black uppercase tracking-[0.2em] ml-1">{selectedMethod?.detailsLabel || 'Account Details'}</label>
                        <input 
                             type="text" 
                             value={details}
                             onChange={e => setDetails(e.target.value)}
-                            placeholder="Enter payment details"
-                            className="w-full bg-[#030712] text-white rounded-2xl p-5 border border-white/5 focus:border-blue-500 outline-none font-bold text-sm shadow-inner"
+                            placeholder="Wallet address or Phone"
+                            className="w-full bg-[#030712] text-white rounded-[1.5rem] p-5 border border-white/5 focus:border-blue-500/50 outline-none font-black text-xs shadow-inner transition-all placeholder:text-gray-800"
                             required
                        />
                    </div>
@@ -223,35 +227,35 @@ export const UserWallet: React.FC = () => {
                    <button 
                         type="submit" 
                         disabled={isSubmitting || availableMethods.length === 0}
-                        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 text-white font-black text-xs uppercase tracking-[0.3em] py-6 rounded-[1.8rem] transition-all active:scale-95 shadow-2xl shadow-blue-900/40 mt-4"
+                        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 text-white font-black text-[10px] uppercase tracking-[0.3em] py-6 rounded-[1.8rem] transition-all active:scale-[0.98] shadow-2xl shadow-blue-900/30 mt-4 border border-blue-400/10"
                    >
-                       {isSubmitting ? 'Processing Payout...' : 'REQUEST WITHDRAWAL'}
+                       {isSubmitting ? 'Verifying Transaction...' : 'Initiate Withdrawal'}
                    </button>
                </form>
            )}
        </div>
 
-       {/* Recent History */}
-       <div className="glass-card p-8 rounded-[2.5rem] border border-white/5 shadow-xl">
-           <h3 className="text-white font-black text-[10px] uppercase tracking-[0.2em] mb-8 flex items-center gap-2">
-               <History size={16} className="text-gray-500" /> Transaction History
+       {/* 3. Transaction History */}
+       <div className="bg-[#111827] p-8 rounded-[2.5rem] border border-white/5 shadow-xl">
+           <h3 className="text-white font-black text-[9px] uppercase tracking-[0.2em] mb-8 flex items-center gap-3">
+               <History size={16} className="text-blue-500" /> Transaction History
            </h3>
-           <div className="space-y-5">
+           <div className="space-y-4">
                {history.length === 0 ? (
-                    <div className="text-center py-10 opacity-30">
-                        <History size={40} className="mx-auto mb-3" />
-                        <p className="text-[10px] font-black uppercase tracking-widest">Empty Transaction Log</p>
+                    <div className="text-center py-16 opacity-10 flex flex-col items-center">
+                        <History size={64} className="mb-4" />
+                        <p className="text-[10px] font-black uppercase tracking-widest italic">No Ledger Records</p>
                     </div>
                ) : (
                 history.map(item => (
-                    <div key={item.id} className="flex justify-between items-center bg-black/40 p-5 rounded-3xl border border-white/5 transition-all hover:border-white/10">
+                    <div key={item.id} className="flex justify-between items-center bg-[#030712] p-5 rounded-[1.8rem] border border-white/5 transition-all hover:bg-white/[0.02]">
                         <div className="text-left">
-                            <p className="text-white text-sm font-black tracking-tight uppercase">{item.method}</p>
-                            <p className="text-[10px] text-gray-600 font-bold uppercase mt-1">{new Date(item.date).toLocaleDateString()}</p>
+                            <p className="text-white text-[11px] font-black tracking-tight uppercase">{item.method}</p>
+                            <p className="text-[9px] text-gray-700 font-black uppercase mt-1 tracking-widest">{new Date(item.date).toLocaleDateString()}</p>
                         </div>
                         <div className="text-right">
-                             <p className="text-lg font-black text-white mb-1">{item.amount.toFixed(0)} <span className="text-[10px] text-gray-500">Pts</span></p>
-                             <span className={`px-3 py-1.5 rounded-lg text-[8px] font-black uppercase tracking-[0.2em] border ${
+                             <p className="text-sm font-black text-white mb-1">{item.amount.toFixed(0)} <span className="text-[9px] text-gray-700 uppercase">Pts</span></p>
+                             <span className={`px-2.5 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest border ${
                                  item.status === 'APPROVED' ? 'bg-green-500/5 text-green-500 border-green-500/20' :
                                  item.status === 'REJECTED' ? 'bg-red-500/5 text-red-500 border-red-500/20' :
                                  'bg-amber-500/5 text-amber-500 border-amber-500/20'
