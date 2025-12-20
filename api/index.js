@@ -117,12 +117,13 @@ export default async function handler(req, res) {
 
             case 'completeTask': {
                 const task = await Task.findOne({ id: data.taskId });
-                if (!task) return res.status(404).json({ message: "Task not found in system" });
+                if (!task) return res.status(404).json({ message: "Task not found" });
                 
                 const existing = await Transaction.findOne({ userId: currentUser.id, taskId: data.taskId });
-                if (existing) return res.status(400).json({ message: "Task reward already claimed" });
+                if (existing) return res.status(400).json({ message: "Already completed" });
 
                 const reward = Number(task.reward);
+                // Atomic increment to ensure no double-spending/lost points
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: reward } });
                 await Transaction.create({ 
                     id: 'tx_' + Date.now(), 
@@ -151,18 +152,6 @@ export default async function handler(req, res) {
                 return res.json({ success: true, reward });
             }
 
-            case 'playMiniGame': {
-                const gameType = data.gameType;
-                const gamesDoc = await Setting.findById('games');
-                const games = gamesDoc?.data || {};
-                const config = games[gameType] || { isEnabled: true, minReward: 1, maxReward: 10 };
-                const reward = Math.floor(Math.random() * (config.maxReward - config.minReward + 1)) + config.minReward;
-                
-                await User.updateOne({ id: currentUser.id }, { $inc: { balance: reward } });
-                await Transaction.create({ id: 'tx_g_' + Date.now(), userId: currentUser.id, amount: reward, type: 'GAME', description: `Game Win: ${gameType}`, date: new Date().toISOString() });
-                return res.json({ success: true, reward, left: 5 });
-            }
-
             case 'createWithdrawal': {
                 const amount = Number(data.request.amount);
                 if (currentUser.balance < amount) return res.status(400).json({ message: "Insufficient balance" });
@@ -184,7 +173,6 @@ export default async function handler(req, res) {
 
             case 'saveSettings':
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();
-                // Store settings strictly in the 'data' field
                 await Setting.findOneAndUpdate({ _id: data.key }, { $set: { data: data.payload } }, { upsert: true, new: true });
                 return res.json({ success: true });
 
@@ -197,16 +185,6 @@ export default async function handler(req, res) {
             case 'deleteShort':
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();
                 await Short.deleteOne({ id: data.id });
-                return res.json({ success: true });
-
-            case 'addAnnouncement':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
-                await Announcement.create(data.payload);
-                return res.json({ success: true });
-
-            case 'deleteAnnouncement':
-                if (currentUser.role !== 'ADMIN') return res.status(403).end();
-                await Announcement.deleteOne({ id: data.id });
                 return res.json({ success: true });
 
             case 'getAllUsers':
@@ -226,15 +204,6 @@ export default async function handler(req, res) {
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();
                 await User.findOneAndUpdate({ id: data.user.id }, { $set: data.user }, { new: true });
                 return res.json({ success: true });
-
-            case 'processReferral': {
-                const referrer = await User.findOne({ id: data.code });
-                if (!referrer || referrer.id === currentUser.id) return res.status(400).json({ message: "Invalid code" });
-                if (currentUser.referredBy) return res.status(400).json({ message: "Already referred" });
-                await User.updateOne({ id: currentUser.id }, { $set: { referredBy: referrer.id }, $inc: { balance: 10 } });
-                await User.updateOne({ id: referrer.id }, { $inc: { balance: 25, referralCount: 1, referralEarnings: 25 } });
-                return res.json({ success: true, message: "Bonus claimed!" });
-            }
 
             case 'triggerHoneypot':
                 currentUser.blocked = true;
