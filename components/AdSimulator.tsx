@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, CheckCircle2, PlayCircle, AlertCircle, X, ExternalLink, MousePointerClick, ShieldAlert } from 'lucide-react';
+import { Loader2, CheckCircle2, PlayCircle, AlertCircle, X, ExternalLink, MousePointerClick, ShieldAlert, RefreshCw } from 'lucide-react';
 import { AdProvider, AdSettings, MonetagAdType } from '../types';
 import { getRotatedLink, initiateAdWatch } from '../services/mockDb';
 
@@ -17,16 +17,18 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
   const [viewState, setViewState] = useState<'LOADING' | 'READY' | 'WATCHING' | 'COMPLETED' | 'ERROR'>('LOADING');
   const [errorMsg, setErrorMsg] = useState('');
   const [countdown, setCountdown] = useState(15);
-  const activeScripts = useRef<HTMLScriptElement[]>([]);
   const [currentFallbackLink, setCurrentFallbackLink] = useState('');
+  const [activeZoneId, setActiveZoneId] = useState<string>('');
+  
+  const pollingInterval = useRef<any>(null);
+  const watchTimer = useRef<any>(null);
 
   // --- 1. SETUP & SCRIPT INJECTION ---
   useEffect(() => {
     if (!isOpen) {
-        // Cleanup injected scripts when closed
-        activeScripts.current.forEach(s => s.remove());
-        activeScripts.current = [];
         setViewState('LOADING');
+        if (pollingInterval.current) clearInterval(pollingInterval.current);
+        if (watchTimer.current) clearInterval(watchTimer.current);
         return;
     }
 
@@ -34,57 +36,63 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
     setErrorMsg('');
     setCountdown(15);
 
-    // Dynamic Rotation Fallback
+    // Get the target Zone ID based on requested type
+    let zoneId = '';
+    switch(type) {
+        case 'REWARDED_INTERSTITIAL': zoneId = settings.monetagRewardedInterstitialId || ''; break;
+        case 'REWARDED_POPUP': zoneId = settings.monetagRewardedPopupId || ''; break;
+        case 'INTERSTITIAL': zoneId = settings.monetagInterstitialId || ''; break;
+        default: zoneId = settings.monetagZoneId || '';
+    }
+    
+    // Fallback to general zone if specific is missing
+    if (!zoneId) zoneId = settings.monetagZoneId || '';
+    setActiveZoneId(zoneId);
+
+    // Load dynamic fallback link
     getRotatedLink().then(link => {
         if (link) setCurrentFallbackLink(link);
         else setCurrentFallbackLink(settings.monetagDirectLink || settings.adsterraLink || settings.telegramChannelLink);
     });
 
-    // Inject Monetag scripts for all configured Telegram Ad types
-    const zonesToInject = [
-      settings.monetagRewardedInterstitialId,
-      settings.monetagRewardedPopupId,
-      settings.monetagInterstitialId,
-      settings.monetagZoneId
-    ].filter(id => id && id.length > 3);
-
-    let scriptLoadedCount = 0;
-    
-    if (zonesToInject.length === 0) {
+    if (!zoneId) {
         setViewState('READY');
         return;
     }
 
-    zonesToInject.forEach(zoneId => {
+    // Inject Script for this specific zone
+    const scriptId = `monetag-sdk-${zoneId}`;
+    if (!document.getElementById(scriptId)) {
         const script = document.createElement('script');
+        script.id = scriptId;
         script.src = settings.monetagAdTag || DEFAULT_MONETAG_SCRIPT;
         script.async = true;
         script.dataset.zone = zoneId;
-        
-        script.onload = () => {
-            scriptLoadedCount++;
-            if (scriptLoadedCount === zonesToInject.length) {
-                setTimeout(() => setViewState('READY'), 500);
-            }
-        };
+        document.head.appendChild(script);
+    }
 
-        script.onerror = () => {
-            scriptLoadedCount++;
-            if (scriptLoadedCount === zonesToInject.length) setViewState('READY');
-        };
+    // Poll for the function show_XXXXX()
+    let attempts = 0;
+    const maxAttempts = 50; // 5 seconds
+    
+    pollingInterval.current = setInterval(() => {
+        attempts++;
+        const funcName = `show_${zoneId}`;
+        if (typeof (window as any)[funcName] === 'function') {
+            clearInterval(pollingInterval.current);
+            setViewState('READY');
+        } else if (attempts >= maxAttempts) {
+            clearInterval(pollingInterval.current);
+            console.warn(`Monetag SDK function ${funcName} not found after 5s. Using fallback.`);
+            setViewState('READY');
+        }
+    }, 100);
 
-        document.body.appendChild(script);
-        activeScripts.current.push(script);
-    });
+    return () => {
+        if (pollingInterval.current) clearInterval(pollingInterval.current);
+    };
 
-    // Timeout to prevent infinite loading if scripts are blocked
-    const loadTimeout = setTimeout(() => {
-        if (viewState === 'LOADING') setViewState('READY');
-    }, 5000);
-
-    return () => clearTimeout(loadTimeout);
-
-  }, [isOpen, settings]);
+  }, [isOpen, settings, type]);
 
   // --- 2. AD TRIGGER LOGIC ---
   const handleShowAd = async () => {
@@ -92,37 +100,21 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
           await initiateAdWatch();
       } catch (e) {}
 
-      let targetZoneId = '';
-      
-      // Determine which zone to trigger based on requested type
-      switch(type) {
-        case 'REWARDED_INTERSTITIAL': 
-            targetZoneId = settings.monetagRewardedInterstitialId || settings.monetagZoneId || ''; 
-            break;
-        case 'REWARDED_POPUP': 
-            targetZoneId = settings.monetagRewardedPopupId || settings.monetagZoneId || ''; 
-            break;
-        case 'INTERSTITIAL': 
-            targetZoneId = settings.monetagInterstitialId || settings.monetagZoneId || ''; 
-            break;
-        default: 
-            targetZoneId = settings.monetagZoneId || '';
-      }
+      const funcName = `show_${activeZoneId}`;
 
-      const funcName = `show_${targetZoneId}`;
-
-      // OPTION 1: Automatic Function Call via Monetag SDK
-      if (targetZoneId && typeof (window as any)[funcName] === 'function') {
+      // OPTION 1: Execute Monetag SDK function if it exists
+      if (activeZoneId && typeof (window as any)[funcName] === 'function') {
           try {
+            console.log(`Executing ${funcName}...`);
             (window as any)[funcName]();
             setViewState('WATCHING');
             startCountdown();
           } catch (e) {
-            console.error("Monetag invocation error", e);
+            console.error("Monetag execution failed", e);
             tryFallback();
           }
       } 
-      // OPTION 2: Fallback to Direct Links
+      // OPTION 2: Fallback to Direct Link / Manual Watch
       else {
           tryFallback();
       }
@@ -131,19 +123,19 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
   const tryFallback = () => {
       if (currentFallbackLink) {
           window.open(currentFallbackLink, '_blank');
-          setViewState('WATCHING');
-          startCountdown();
-      } else {
-          setViewState('WATCHING');
-          startCountdown();
       }
+      setViewState('WATCHING');
+      startCountdown();
   };
 
   const startCountdown = () => {
-      const timer = setInterval(() => {
+      if (watchTimer.current) clearInterval(watchTimer.current);
+      setCountdown(15);
+      
+      watchTimer.current = setInterval(() => {
           setCountdown((prev) => {
               if (prev <= 1) {
-                  clearInterval(timer);
+                  clearInterval(watchTimer.current);
                   setViewState('COMPLETED');
                   return 0;
               }
@@ -154,6 +146,11 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
 
   const handleManualOpen = () => {
       if (currentFallbackLink) window.open(currentFallbackLink, '_blank');
+      else if (activeZoneId) {
+          // Attempt to call again if it was just a delay
+          const funcName = `show_${activeZoneId}`;
+          if (typeof (window as any)[funcName] === 'function') (window as any)[funcName]();
+      }
   };
 
   if (!isOpen) return null;
@@ -165,64 +162,69 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
           <div className="bg-gray-900 p-5 border-b border-white/5 flex justify-between items-center">
               <h3 className="text-white font-black text-xs uppercase tracking-widest flex items-center gap-2">
                   <ShieldAlert className="text-blue-500" size={18} />
-                  Monetized Segment
+                  Security Verification
               </h3>
-              <button onClick={onComplete} className="text-gray-500 hover:text-white">
+              <button onClick={() => { setViewState('LOADING'); onComplete(); }} className="text-gray-500 hover:text-white">
                   <X size={20} />
               </button>
           </div>
 
-          <div className="p-10 flex flex-col items-center justify-center min-h-[350px] text-center">
+          <div className="p-10 flex flex-col items-center justify-center min-h-[380px] text-center">
               
               {viewState === 'LOADING' && (
                   <div className="space-y-4">
-                      <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto" />
-                      <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest animate-pulse">Initializing Ad Stream</p>
+                      <div className="relative">
+                        <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto" />
+                        <div className="absolute inset-0 bg-blue-500/10 blur-xl animate-pulse"></div>
+                      </div>
+                      <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest animate-pulse">Connecting to Monetag Node...</p>
                   </div>
               )}
 
               {viewState === 'READY' && (
                   <div className="space-y-8 animate-in zoom-in duration-300 w-full">
-                      <div className="w-24 h-24 bg-blue-600/10 rounded-[2rem] flex items-center justify-center mx-auto shadow-2xl border border-blue-500/20">
-                          <MousePointerClick className="w-10 h-10 text-blue-500" />
+                      <div className="w-24 h-24 bg-blue-600/10 rounded-[2.5rem] flex items-center justify-center mx-auto shadow-2xl border border-blue-500/20">
+                          <PlayCircle className="w-12 h-12 text-blue-500" />
                       </div>
                       <div>
-                          <h2 className="text-2xl font-black text-white tracking-tighter uppercase">WATCH TO EARN</h2>
-                          <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mt-2 leading-relaxed">Engagement is required to verify your contribution to the node network.</p>
+                          <h2 className="text-2xl font-black text-white tracking-tighter uppercase">AD READY</h2>
+                          <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mt-2 leading-relaxed">
+                            Complete the {type.replace('_', ' ')} <br/> to verify your session.
+                          </p>
                       </div>
                       <button 
                         onClick={handleShowAd}
                         className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-xs py-5 rounded-2xl shadow-xl transition transform active:scale-95 flex items-center justify-center gap-2 tracking-[0.2em] border border-blue-400/20"
                       >
-                          {type.replace('_', ' ')}
+                          Watch Now
                       </button>
+                      
+                      <p className="text-[9px] text-gray-700 font-black uppercase tracking-widest">Zone ID: {activeZoneId || 'Fallback'}</p>
                   </div>
               )}
 
               {viewState === 'WATCHING' && (
-                  <div className="space-y-6">
-                      <div className="relative w-24 h-24 mx-auto">
+                  <div className="space-y-8">
+                      <div className="relative w-28 h-28 mx-auto">
                            <svg className="w-full h-full transform -rotate-90">
-                               <circle cx="48" cy="48" r="42" stroke="#1f2937" strokeWidth="8" fill="none" />
-                               <circle cx="48" cy="48" r="42" stroke="#3b82f6" strokeWidth="8" fill="none" strokeDasharray="264" strokeDashoffset={264 - (264 * (15 - countdown) / 15)} className="transition-all duration-1000 ease-linear" />
+                               <circle cx="56" cy="56" r="50" stroke="#1f2937" strokeWidth="8" fill="none" />
+                               <circle cx="56" cy="56" r="50" stroke="#3b82f6" strokeWidth="8" fill="none" strokeDasharray="314" strokeDashoffset={314 - (314 * (15 - countdown) / 15)} className="transition-all duration-1000 ease-linear" />
                            </svg>
-                           <span className="absolute inset-0 flex items-center justify-center font-black text-2xl text-white">
+                           <span className="absolute inset-0 flex items-center justify-center font-black text-3xl text-white">
                                {countdown}
                            </span>
                       </div>
                       <div>
-                          <h3 className="text-lg font-black text-white uppercase tracking-tight">Processing Interaction</h3>
-                          <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest mt-2">Do not close this window</p>
+                          <h3 className="text-xl font-black text-white uppercase tracking-tight">Watching Ad...</h3>
+                          <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest mt-2">Points will be credited shortly</p>
                       </div>
                       
-                      {currentFallbackLink && (
-                          <button 
-                            onClick={handleManualOpen}
-                            className="text-[9px] text-blue-400 font-black uppercase tracking-widest underline underline-offset-4 flex items-center justify-center gap-1 mt-4 opacity-70 hover:opacity-100"
-                          >
-                              Manual Trigger <ExternalLink size={12} />
-                          </button>
-                      )}
+                      <button 
+                        onClick={handleManualOpen}
+                        className="bg-white/5 text-gray-500 px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 mx-auto hover:text-white transition-colors"
+                      >
+                          <RefreshCw size={12} /> Force Reload Ad
+                      </button>
                   </div>
               )}
 
@@ -233,13 +235,13 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
                       </div>
                       <div>
                           <h2 className="text-2xl font-black text-white tracking-tighter uppercase">VERIFIED</h2>
-                          <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest mt-2">Assets Ready for Claiming</p>
+                          <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest mt-2">Reward Protocol Initiated</p>
                       </div>
                       <button 
-                        onClick={onComplete}
+                        onClick={() => { setViewState('LOADING'); onComplete(); }}
                         className="w-full bg-green-600 hover:bg-green-700 text-white font-black text-xs py-5 rounded-2xl shadow-xl transition tracking-[0.2em] border border-green-400/20"
                       >
-                          COLLECT REWARD
+                          CLAIM REWARD
                       </button>
                   </div>
               )}
@@ -247,12 +249,12 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
               {viewState === 'ERROR' && (
                   <div className="space-y-6">
                       <AlertCircle className="w-16 h-16 text-red-500 mx-auto" />
-                      <p className="text-red-400 text-xs font-black uppercase tracking-widest">{errorMsg}</p>
+                      <p className="text-red-400 text-xs font-black uppercase tracking-widest">{errorMsg || "Network Error"}</p>
                       <button 
                         onClick={() => setViewState('READY')}
-                        className="text-gray-500 underline text-[10px] font-black uppercase tracking-widest"
+                        className="bg-gray-900 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/5"
                       >
-                          Retry Protocol
+                          Retry Connection
                       </button>
                   </div>
               )}

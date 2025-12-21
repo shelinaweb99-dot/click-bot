@@ -16,7 +16,8 @@ import {
   ExternalLink,
   ShieldCheck,
   Zap,
-  Layout
+  Layout,
+  Info
 } from 'lucide-react';
 
 export const AdminAds: React.FC = () => {
@@ -177,6 +178,13 @@ export const AdminAds: React.FC = () => {
              </div>
              <h2 className="text-xl font-black text-white tracking-tight uppercase">Telegram SDK Ads</h2>
           </div>
+          
+          <div className="bg-blue-600/5 p-4 rounded-2xl border border-blue-500/10 flex gap-3 items-start">
+             <Info className="text-blue-500 shrink-0 mt-1" size={18} />
+             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest leading-relaxed">
+               Enter only the numeric Zone IDs. The system will automatically detect the Monetag SDK and trigger the ads.
+             </p>
+          </div>
 
           <div className="space-y-6">
              <div className="space-y-4">
@@ -220,30 +228,10 @@ export const AdminAds: React.FC = () => {
              <div className="bg-yellow-500/10 p-2 rounded-lg text-yellow-500 border border-yellow-500/10">
                 <Zap size={20} />
              </div>
-             <h2 className="text-xl font-black text-white tracking-tight uppercase">Active Provider</h2>
+             <h2 className="text-xl font-black text-white tracking-tight uppercase">Legacy & Fallback</h2>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {[
-              { id: AdProvider.MONETAG, label: 'Monetag', color: 'bg-indigo-600' },
-              { id: AdProvider.ADSTERRA, label: 'Adsterra', color: 'bg-emerald-600' },
-              { id: AdProvider.TELEGRAM_ADS, label: 'Telegram', color: 'bg-blue-500' },
-            ].map(prov => (
-              <button
-                key={prov.id}
-                onClick={() => setSettings({ ...settings, activeProvider: prov.id })}
-                className={`p-5 rounded-2xl border transition-all font-black text-[10px] uppercase tracking-widest text-center ${
-                  settings.activeProvider === prov.id 
-                  ? `${prov.color} border-white/20 text-white shadow-lg` 
-                  : 'bg-[#0b1120] border-white/5 text-gray-500 hover:text-white'
-                }`}
-              >
-                {prov.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="space-y-6 pt-4">
+          <div className="space-y-6">
              <div className="space-y-4">
                 <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Universal Tag (Script URL)</label>
                 <input 
@@ -256,7 +244,7 @@ export const AdminAds: React.FC = () => {
              </div>
              
              <div className="space-y-4">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Legacy Zone ID</label>
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Legacy/Standard Zone ID</label>
                 <input 
                    type="text" 
                    className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
@@ -267,7 +255,7 @@ export const AdminAds: React.FC = () => {
              </div>
 
              <div className="space-y-4">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Direct Link (Fallback)</label>
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Direct Link (Global Fallback)</label>
                 <input 
                    type="text" 
                    className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-[10px] shadow-inner transition-all"
