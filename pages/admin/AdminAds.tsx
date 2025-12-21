@@ -40,9 +40,6 @@ export const AdminAds: React.FC = () => {
     monetagDirectLink: '',
     monetagAdTag: '',
     monetagZoneId: '',
-    monetagRewardedInterstitialId: '',
-    monetagRewardedPopupId: '',
-    monetagInterstitialId: '',
     adsterraLink: '',
     rotation: defaultRotation
   };
@@ -167,61 +164,7 @@ export const AdminAds: React.FC = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        
-        {/* Monetag Telegram SDK IDs */}
-        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl space-y-8">
-          <div className="flex items-center gap-3">
-             <div className="bg-indigo-500/10 p-2 rounded-lg text-indigo-500 border border-indigo-500/10">
-                <Layout size={20} />
-             </div>
-             <h2 className="text-xl font-black text-white tracking-tight uppercase">Telegram SDK Ads</h2>
-          </div>
-          
-          <div className="bg-blue-600/5 p-4 rounded-2xl border border-blue-500/10 flex gap-3 items-start">
-             <Info className="text-blue-500 shrink-0 mt-1" size={18} />
-             <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest leading-relaxed">
-               Enter only the numeric Zone IDs. The system will automatically detect the Monetag SDK and trigger the ads.
-             </p>
-          </div>
-
-          <div className="space-y-6">
-             <div className="space-y-4">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Rewarded Interstitial Zone ID</label>
-                <input 
-                   type="text" 
-                   className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
-                   placeholder="e.g. 8621458"
-                   value={settings.monetagRewardedInterstitialId || ''}
-                   onChange={e => setSettings({ ...settings, monetagRewardedInterstitialId: e.target.value })}
-                />
-             </div>
-             
-             <div className="space-y-4">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Rewarded Popup Zone ID</label>
-                <input 
-                   type="text" 
-                   className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
-                   placeholder="e.g. 8621459"
-                   value={settings.monetagRewardedPopupId || ''}
-                   onChange={e => setSettings({ ...settings, monetagRewardedPopupId: e.target.value })}
-                />
-             </div>
-
-             <div className="space-y-4">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">In-App Interstitial Zone ID</label>
-                <input 
-                   type="text" 
-                   className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
-                   placeholder="e.g. 8621460"
-                   value={settings.monetagInterstitialId || ''}
-                   onChange={e => setSettings({ ...settings, monetagInterstitialId: e.target.value })}
-                />
-             </div>
-          </div>
-        </div>
-
-        {/* Legacy Monetag / Adsterra Settings */}
+      <div className="grid grid-cols-1 gap-8">
         <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl space-y-8">
           <div className="flex items-center gap-3">
              <div className="bg-yellow-500/10 p-2 rounded-lg text-yellow-500 border border-yellow-500/10">
@@ -262,11 +205,11 @@ export const AdminAds: React.FC = () => {
              </div>
              
              <div className="space-y-4">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Legacy/Standard Zone ID</label>
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Standard Zone ID</label>
                 <input 
                    type="text" 
                    className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
-                   placeholder="Standard Zone"
+                   placeholder="e.g. 1234567"
                    value={settings.monetagZoneId || ''}
                    onChange={e => setSettings({ ...settings, monetagZoneId: e.target.value })}
                 />
@@ -286,7 +229,6 @@ export const AdminAds: React.FC = () => {
         </div>
       </div>
       
-      {/* Rotation System Section (Condensed) */}
       <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
           <div className="flex justify-between items-center mb-8">
             <h2 className="text-xl font-black text-white tracking-tight uppercase flex items-center gap-3">

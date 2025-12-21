@@ -198,7 +198,6 @@ export const TaskRunner: React.FC = () => {
         isOpen={showAd} 
         onComplete={handleAdComplete} 
         settings={adSettings} 
-        type="REWARDED_INTERSTITIAL"
       />
     </div>
   );
