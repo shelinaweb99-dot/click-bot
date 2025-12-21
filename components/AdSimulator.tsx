@@ -52,7 +52,7 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
     // Load dynamic fallback link
     getRotatedLink().then(link => {
         if (link) setCurrentFallbackLink(link);
-        else setCurrentFallbackLink(settings.monetagDirectLink || settings.adsterraLink || settings.telegramChannelLink);
+        else setCurrentFallbackLink(settings.monetagDirectLink || settings.adsterraLink || '');
     });
 
     if (!zoneId) {

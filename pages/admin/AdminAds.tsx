@@ -36,7 +36,7 @@ export const AdminAds: React.FC = () => {
   };
 
   const defaultAdSettings: AdSettings = {
-    activeProvider: AdProvider.TELEGRAM_ADS,
+    activeProvider: AdProvider.MONETAG,
     monetagDirectLink: '',
     monetagAdTag: '',
     monetagZoneId: '',
@@ -44,7 +44,6 @@ export const AdminAds: React.FC = () => {
     monetagRewardedPopupId: '',
     monetagInterstitialId: '',
     adsterraLink: '',
-    telegramChannelLink: '',
     rotation: defaultRotation
   };
 
@@ -231,7 +230,26 @@ export const AdminAds: React.FC = () => {
              <h2 className="text-xl font-black text-white tracking-tight uppercase">Legacy & Fallback</h2>
           </div>
 
-          <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[
+              { id: AdProvider.MONETAG, label: 'Monetag', color: 'bg-indigo-600' },
+              { id: AdProvider.ADSTERRA, label: 'Adsterra', color: 'bg-emerald-600' },
+            ].map(prov => (
+              <button
+                key={prov.id}
+                onClick={() => setSettings({ ...settings, activeProvider: prov.id })}
+                className={`p-5 rounded-2xl border transition-all font-black text-[10px] uppercase tracking-widest text-center ${
+                  settings.activeProvider === prov.id 
+                  ? `${prov.color} border-white/20 text-white shadow-lg` 
+                  : 'bg-[#0b1120] border-white/5 text-gray-500 hover:text-white'
+                }`}
+              >
+                {prov.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-6 pt-4">
              <div className="space-y-4">
                 <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Universal Tag (Script URL)</label>
                 <input 

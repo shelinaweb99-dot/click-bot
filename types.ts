@@ -32,8 +32,7 @@ export interface WithdrawalMethod {
 
 export enum AdProvider {
   MONETAG = 'MONETAG',
-  ADSTERRA = 'ADSTERRA',
-  TELEGRAM_ADS = 'TELEGRAM_ADS'
+  ADSTERRA = 'ADSTERRA'
 }
 
 export type RotationMode = 'SERIAL' | 'RANDOM';
@@ -69,7 +68,6 @@ export interface AdSettings {
   monetagInterstitialId?: string;
   
   adsterraLink: string;
-  telegramChannelLink: string;
   rotation?: AdRotationConfig;
 }
 
