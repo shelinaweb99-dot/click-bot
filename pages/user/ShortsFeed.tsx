@@ -4,7 +4,7 @@ import { getCurrentUserId, getShorts, getShortsSettings, getUserById, recordShor
 import { ShortVideo, ShortsSettings, AdSettings, User } from '../../types';
 import { AdSimulator } from '../../components/AdSimulator';
 import { YouTubePlayer } from '../../components/YouTubePlayer';
-import { Heart, Loader2, Info, CheckCircle, Clock, Play, RefreshCw, ExternalLink, Volume2, VolumeX, SkipForward, AlertTriangle } from 'lucide-react';
+import { Heart, Loader2, Info, CheckCircle, Clock, Play, RefreshCw, Volume2, VolumeX, AlertTriangle } from 'lucide-react';
 
 export const ShortsFeed: React.FC = () => {
   const [videos, setVideos] = useState<ShortVideo[]>([]);
@@ -53,7 +53,6 @@ export const ShortsFeed: React.FC = () => {
         const now = Date.now();
         const validVideos = allVideos.filter(video => {
             const history = u?.shortsData?.lastWatched;
-            // history can be a Map or a plain object depending on DB/Service layer
             const lastWatchedStr = history instanceof Map ? history.get(video.id) : (history?.[video.id]);
             
             if (!lastWatchedStr) return true;
@@ -88,14 +87,15 @@ export const ShortsFeed: React.FC = () => {
         clearTimeout(timeoutId);
         timeoutId = setTimeout(() => {
             if (!isMountedRef.current || !container) return;
+            // Use Math.round to find the closest element to the current scroll position
             const index = Math.round(container.scrollTop / container.clientHeight);
             if (index !== activeIndex && index >= 0 && index < videos.length) {
                 setActiveIndex(index);
             }
-        }, 100);
+        }, 50); // Faster update for better responsiveness
     };
 
-    container.addEventListener('scroll', handleScroll);
+    container.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
         container.removeEventListener('scroll', handleScroll);
         clearTimeout(timeoutId);
@@ -117,9 +117,10 @@ export const ShortsFeed: React.FC = () => {
 
     setCurrentVideoStatus('IDLE');
     
+    // Slight delay before playing to ensure UI has snapped correctly
     const timer = setTimeout(() => {
         if (isMountedRef.current) handleManualPlay(videos[activeIndex].id);
-    }, 800); 
+    }, 400); 
     
     return () => clearTimeout(timer);
   }, [activeIndex, videos]);
@@ -167,7 +168,6 @@ export const ShortsFeed: React.FC = () => {
           if (isMountedRef.current && res.success) {
               setCurrentVideoStatus('COMPLETED');
               
-              // Increment watchedTodayCount locally for immediate ad check
               const newWatchedTodayCount = (userShortsData?.watchedTodayCount || 0) + 1;
               
               setUserShortsData(prev => ({
@@ -175,7 +175,6 @@ export const ShortsFeed: React.FC = () => {
                   watchedTodayCount: newWatchedTodayCount
               }));
 
-              // --- AD FREQUENCY LOGIC ---
               if (settings && newWatchedTodayCount > 0 && newWatchedTodayCount % settings.adFrequency === 0) {
                    setTimeout(() => {
                        if (isMountedRef.current) setShowAd(true);
@@ -192,7 +191,6 @@ export const ShortsFeed: React.FC = () => {
       if (!userId) return;
       try {
           await recordAdReward(userId);
-          // Reload data after ad to refresh 24h filter and counts
           await loadData();
       } catch (e) { console.error(e); }
   };
@@ -223,7 +221,8 @@ export const ShortsFeed: React.FC = () => {
     <div className="fixed inset-0 top-[60px] bottom-[70px] bg-black z-10">
         <div 
             ref={containerRef}
-            className="w-full h-full overflow-y-scroll snap-y snap-mandatory no-scrollbar"
+            className="w-full h-full overflow-y-scroll snap-y snap-mandatory no-scrollbar scroll-smooth"
+            style={{ WebkitOverflowScrolling: 'touch' }}
         >
             {videos.map((video, index) => {
                 const isActive = index === activeIndex;
@@ -237,6 +236,7 @@ export const ShortsFeed: React.FC = () => {
                     <div 
                         key={video.id} 
                         className="w-full h-full snap-start relative bg-black flex items-center justify-center"
+                        style={{ scrollSnapStop: 'always' }} // CRITICAL: Forces one video per scroll
                     >
                         <div className="absolute inset-0 z-0 opacity-40">
                              <img src={`https://img.youtube.com/vi/${video.youtubeId}/hqdefault.jpg`} className="w-full h-full object-cover blur-3xl" alt="bg" />
