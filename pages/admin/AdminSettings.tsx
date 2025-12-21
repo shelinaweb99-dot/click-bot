@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { getPaymentMethods, savePaymentMethod, deletePaymentMethod, updateAllPaymentMethods, getAdSettings, saveAdSettings, getSystemSettings, saveSystemSettings } from '../../services/mockDb';
-import { WithdrawalMethod, AdSettings, AdProvider, SystemSettings, AdLink, RotationMode, AdRotationConfig } from '../../types';
-import { Plus, Trash2, Save, MonitorPlay, Bot, AlertTriangle, Lock, Code, Info, Link as LinkIcon, RefreshCcw, ToggleLeft, ToggleRight, List, DollarSign, Loader2, CreditCard, CheckCircle } from 'lucide-react';
+import { getPaymentMethods, savePaymentMethod, deletePaymentMethod, updateAllPaymentMethods, getSystemSettings, saveSystemSettings } from '../../services/mockDb';
+import { WithdrawalMethod, SystemSettings } from '../../types';
+import { Plus, Trash2, Save, Bot, Lock, Code, Info, RefreshCcw, ToggleLeft, ToggleRight, DollarSign, Loader2, CreditCard } from 'lucide-react';
 
 export const AdminSettings: React.FC = () => {
   const [methods, setMethods] = useState<WithdrawalMethod[]>([]);
@@ -10,29 +10,6 @@ export const AdminSettings: React.FC = () => {
   const [newMethodLabel, setNewMethodLabel] = useState('');
   const [loading, setLoading] = useState(true);
   const isMounted = useRef(true);
-
-  const defaultAdSettings: AdSettings = {
-    activeProvider: AdProvider.TELEGRAM_ADS,
-    monetagDirectLink: '',
-    monetagInterstitialUrl: '',
-    monetagRewardedUrl: '',
-    monetagAdTag: '',
-    monetagZoneId: '',
-    monetagPopupUrl: '',
-    adsterraLink: '',
-    telegramChannelLink: '',
-    rotation: {
-        isEnabled: false,
-        mode: 'SERIAL',
-        intervalMinutes: 10,
-        lastRotationTime: 0,
-        currentLinkIndex: 0,
-        links: []
-    }
-  };
-
-  const [adSettings, setAdSettings] = useState<AdSettings>(defaultAdSettings);
-  const [rotationConfig, setRotationConfig] = useState<AdRotationConfig>(defaultAdSettings.rotation!);
 
   const defaultSystemSettings: SystemSettings = {
       telegramBotToken: '',
@@ -52,23 +29,14 @@ export const AdminSettings: React.FC = () => {
   const loadData = async () => {
     try {
         if (isMounted.current) setLoading(true);
-        const [m, a, s] = await Promise.all([
+        const [m, s] = await Promise.all([
             getPaymentMethods(), 
-            getAdSettings(), 
             getSystemSettings()
         ]);
         
         if (!isMounted.current) return;
 
         setMethods(Array.isArray(m) ? m : []);
-        
-        const mergedAds = { ...defaultAdSettings, ...a };
-        setAdSettings(mergedAds);
-        
-        if (mergedAds.rotation) {
-            setRotationConfig({ ...defaultAdSettings.rotation!, ...mergedAds.rotation });
-        }
-        
         setSystemSettings({ ...defaultSystemSettings, ...s });
         
     } catch (e) {
@@ -136,9 +104,7 @@ export const AdminSettings: React.FC = () => {
     
     setIsSaving(true);
     try {
-        const mergedAdSettings = { ...adSettings, rotation: rotationConfig };
         await Promise.all([
-            saveAdSettings(mergedAdSettings),
             saveSystemSettings(systemSettings),
             updateAllPaymentMethods(methods)
         ]);

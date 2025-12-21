@@ -16,7 +16,8 @@ import {
   Gamepad2,
   PlaySquare,
   ShieldAlert,
-  Loader2
+  Loader2,
+  MonitorPlay
 } from 'lucide-react';
 import { logout, getCurrentUserId, getUserRole } from '../services/mockDb';
 import { UserRole } from '../types';
@@ -77,10 +78,8 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
   const checkTimer = useRef<any>(null);
 
   useEffect(() => {
-    // Clear any pending verification
     if (checkTimer.current) clearTimeout(checkTimer.current);
 
-    // Short verification delay to prevent flickering or double-redirect loops
     checkTimer.current = setTimeout(() => {
         const id = getCurrentUserId();
         const role = getUserRole();
@@ -91,7 +90,7 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
         } else {
           setIsVerifying(false);
         }
-    }, 300); // 300ms buffer for session stabilization
+    }, 300);
 
     return () => {
         if (checkTimer.current) clearTimeout(checkTimer.current);
@@ -140,6 +139,7 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
             { to: '/admin/shorts', icon: PlaySquare, label: 'Shorts' },
             { to: '/admin/announcements', icon: Megaphone, label: 'News' },
             { to: '/admin/games', icon: Gamepad2, label: 'Games' },
+            { to: '/admin/ads', icon: MonitorPlay, label: 'Ads' },
             { to: '/admin/settings', icon: Sliders, label: 'Settings' },
           ].map((item) => (
             <NavLink 

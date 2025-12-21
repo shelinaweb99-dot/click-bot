@@ -25,6 +25,7 @@ import { AdminSettings } from './pages/admin/AdminSettings';
 import { AdminAnnouncements } from './pages/admin/AdminAnnouncements';
 import { AdminGames } from './pages/admin/AdminGames';
 import { AdminShorts } from './pages/admin/AdminShorts';
+import { AdminAds } from './pages/admin/AdminAds';
 import { getCurrentUserId, getUserRole } from './services/mockDb';
 import { UserRole } from './types';
 
@@ -37,7 +38,6 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: UserR
   }
 
   if (requiredRole && role !== requiredRole) {
-    // If Admin tries to access User pages or vice versa, redirect to their home
     return <Navigate to={role === UserRole.ADMIN ? '/admin' : '/dashboard'} replace />;
   }
 
@@ -142,6 +142,11 @@ const App: React.FC = () => {
         <Route path="/admin/games" element={
           <ProtectedRoute requiredRole={UserRole.ADMIN}>
             <AdminLayout><AdminGames /></AdminLayout>
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/ads" element={
+          <ProtectedRoute requiredRole={UserRole.ADMIN}>
+            <AdminLayout><AdminAds /></AdminLayout>
           </ProtectedRoute>
         } />
         <Route path="/admin/withdrawals" element={
