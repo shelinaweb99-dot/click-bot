@@ -36,7 +36,7 @@ const apiCall = async (action: string, data: any = {}, useCache = false) => {
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // Increased to 30s for Cold Starts
+    const timeoutId = setTimeout(() => controller.abort(), 30000); 
     try {
         const token = getAuthToken();
         const tgData = (window as any).Telegram?.WebApp?.initData || '';
@@ -137,7 +137,13 @@ export const createWithdrawal = async (req: WithdrawalRequest) => {
     window.dispatchEvent(new Event('db_change'));
     return res;
 }
-export const getWithdrawals = async (): Promise<WithdrawalRequest[]> => apiCall('getAllWithdrawals', {}, true);
+
+// USER SPECIFIC WITHDRAWALS
+export const getWithdrawals = async (): Promise<WithdrawalRequest[]> => apiCall('getWithdrawals', {}, true);
+
+// ADMIN SPECIFIC WITHDRAWALS
+export const adminGetWithdrawals = async (): Promise<WithdrawalRequest[]> => apiCall('adminGetWithdrawals', {}, true);
+
 export const updateWithdrawalStatus = async (id: string, status: string) => {
     const res = await apiCall('updateWithdrawal', { id, status });
     window.dispatchEvent(new Event('db_change'));

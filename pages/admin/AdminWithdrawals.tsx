@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { WithdrawalRequest, WithdrawalStatus } from '../../types';
-import { getWithdrawals, updateWithdrawalStatus, getUserById, saveUser, subscribeToChanges } from '../../services/mockDb';
+import { adminGetWithdrawals, updateWithdrawalStatus, getUserById, saveUser, subscribeToChanges } from '../../services/mockDb';
 import { Check, X, Clock, Loader2, AlertCircle, RefreshCw, DollarSign } from 'lucide-react';
 
 export const AdminWithdrawals: React.FC = () => {
@@ -14,7 +14,7 @@ export const AdminWithdrawals: React.FC = () => {
       try {
           if (isMounted.current) setLoading(true);
           setError(null);
-          const data = await getWithdrawals();
+          const data = await adminGetWithdrawals();
           if (isMounted.current) {
             setWithdrawals(Array.isArray(data) ? [...data].reverse() : []);
           }
@@ -55,7 +55,6 @@ export const AdminWithdrawals: React.FC = () => {
                   await saveUser(user);
               }
           }
-          // Refresh list
           loadData();
       } catch (e) {
           console.error("Action failed", e);

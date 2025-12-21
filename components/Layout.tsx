@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Home, 
@@ -74,19 +74,32 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
   const navigate = useNavigate();
   const location = useLocation();
   const [isVerifying, setIsVerifying] = useState(true);
+  const checkTimer = useRef<any>(null);
 
   useEffect(() => {
-    const id = getCurrentUserId();
-    const role = getUserRole();
-    if (!id || role !== UserRole.ADMIN) {
-      navigate('/login', { replace: true });
-    } else {
-      setIsVerifying(false);
-    }
+    // Clear any pending verification
+    if (checkTimer.current) clearTimeout(checkTimer.current);
+
+    // Short verification delay to prevent flickering or double-redirect loops
+    checkTimer.current = setTimeout(() => {
+        const id = getCurrentUserId();
+        const role = getUserRole();
+        
+        if (!id || role !== UserRole.ADMIN) {
+          console.warn("Security Breach Detected: Unauthenticated access to Administrative Node.");
+          navigate('/login', { replace: true });
+        } else {
+          setIsVerifying(false);
+        }
+    }, 300); // 300ms buffer for session stabilization
+
+    return () => {
+        if (checkTimer.current) clearTimeout(checkTimer.current);
+    };
   }, [location.pathname, navigate]);
 
   const handleLogout = () => {
-    if(window.confirm('Terminate secure admin session?')) {
+    if(window.confirm('Action Required: Terminate secure administrative session?')) {
       logout();
       navigate('/login', { replace: true });
     }
@@ -94,15 +107,19 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
 
   if (isVerifying) {
     return (
-      <div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center space-y-4">
-        <Loader2 className="animate-spin text-blue-500" size={40} />
-        <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest animate-pulse">Checking Security Protocol</p>
+      <div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center space-y-6">
+        <div className="relative">
+          <Loader2 className="animate-spin text-blue-500" size={48} />
+          <div className="absolute inset-0 bg-blue-500/10 blur-xl animate-pulse"></div>
+        </div>
+        <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] animate-pulse">Verifying Root Privileges</p>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-[#0f172a] flex flex-col md:flex-row font-sans selection:bg-blue-500/30">
+      {/* Sidebar */}
       <aside className="w-full md:w-64 lg:w-72 bg-[#1e293b] p-6 md:p-8 flex flex-col border-r border-white/5 z-20 shadow-[10px_0_30px_rgba(0,0,0,0.3)]">
         <div className="mb-8 md:mb-10 flex items-center gap-4 px-2">
            <div className="bg-blue-600 p-2.5 rounded-2xl shadow-xl shadow-blue-900/40 border border-blue-400/20">
@@ -149,6 +166,7 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
         </div>
       </aside>
 
+      {/* Main Content Area */}
       <main className="flex-1 p-4 sm:p-8 lg:p-12 overflow-y-auto relative bg-[#0b1120]">
         <div className="max-w-5xl mx-auto">
           {children}

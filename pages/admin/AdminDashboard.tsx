@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useRef } from 'react';
-import { getUsers, getWithdrawals, getTasks, subscribeToChanges, getCurrentUserId, getUserRole } from '../../services/mockDb';
+import { getUsers, adminGetWithdrawals, getTasks, subscribeToChanges, getCurrentUserId, getUserRole } from '../../services/mockDb';
 import { User, Task, WithdrawalRequest, UserRole } from '../../types';
 import { Users, CheckCircle, Wallet, AlertCircle, Megaphone, Loader2, RefreshCw, LayoutDashboard } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -19,7 +19,6 @@ export const AdminDashboard: React.FC = () => {
       const id = getCurrentUserId();
       const role = getUserRole();
       
-      // Strict role check to prevent unauthorized layout rendering
       if (!id || role !== UserRole.ADMIN) {
           navigate('/login', { replace: true });
           return;
@@ -27,10 +26,9 @@ export const AdminDashboard: React.FC = () => {
 
       if (isMounted.current) setError(null);
       
-      // Use Promise.allSettled to ensure that one failing call doesn't block the entire dashboard
       const results = await Promise.allSettled([
         getUsers(),
-        getWithdrawals(),
+        adminGetWithdrawals(),
         getTasks()
       ]);
 
@@ -44,7 +42,6 @@ export const AdminDashboard: React.FC = () => {
       setWithdrawals(Array.isArray(withdrawalsData) ? withdrawalsData : []);
       setTasks(Array.isArray(tasksData) ? tasksData : []);
 
-      // If all three failed, then we show an error
       if (results.every(r => r.status === 'rejected')) {
           setError("Failed to sync with central database.");
       }
@@ -94,7 +91,6 @@ export const AdminDashboard: React.FC = () => {
     );
   }
 
-  // Defensive calculations to prevent NaN or crashes
   const safeWithdrawals = Array.isArray(withdrawals) ? withdrawals : [];
   const pendingWithdrawals = safeWithdrawals.filter(w => w && w.status === 'PENDING').length;
   const totalPaid = safeWithdrawals
@@ -122,7 +118,6 @@ export const AdminDashboard: React.FC = () => {
         </button>
       </div>
       
-      {/* 4-Column Metric Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl relative group overflow-hidden">
             <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">

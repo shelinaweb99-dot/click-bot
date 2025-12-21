@@ -8,21 +8,25 @@ let cachedDb = null;
 
 async function connectToDatabase() {
     if (cachedDb && mongoose.connection.readyState === 1) return cachedDb;
+    
     const uri = process.env.MONGODB_URI;
     if (!uri) throw new Error("MONGODB_URI is missing");
     
     try {
         mongoose.set('strictQuery', true);
         const opts = {
-            serverSelectionTimeoutMS: 10000, 
-            socketTimeoutMS: 45000, 
-            connectTimeoutMS: 10000,
+            serverSelectionTimeoutMS: 20000, // 20s
+            socketTimeoutMS: 60000, 
+            connectTimeoutMS: 20000,
             maxPoolSize: 10,
         };
-        await mongoose.connect(uri, opts);
+        if (mongoose.connection.readyState === 0) {
+            await mongoose.connect(uri, opts);
+        }
         cachedDb = mongoose.connection;
         return cachedDb;
     } catch (e) {
+        console.error("Database connection failure:", e);
         throw new Error("Critical: Database connection failed.");
     }
 }
@@ -140,6 +144,8 @@ export default async function handler(req, res) {
 
         if (action === 'login' || action === 'register') {
             const { email, password, ...userData } = data;
+            if (!email || !password) return res.status(400).json({ message: "Credentials missing." });
+            
             let user = await User.findOne({ email: email.toLowerCase() }).select('+password');
             const newToken = crypto.randomBytes(32).toString('hex');
             const expires = new Date();
@@ -166,8 +172,8 @@ export default async function handler(req, res) {
         }
 
         const currentUser = await authenticateUser(req);
-        if (!currentUser) return res.status(401).json({ message: "Session expired." });
-        if (currentUser.blocked) return res.status(403).json({ message: "Access restricted." });
+        if (!currentUser) return res.status(401).json({ message: "Session expired. Please re-authenticate." });
+        if (currentUser.blocked) return res.status(403).json({ message: "Access restricted by system administrator." });
 
         switch (action) {
             case 'getUser': return res.json(currentUser);
@@ -175,18 +181,23 @@ export default async function handler(req, res) {
             case 'getTransactions': return res.json(await Transaction.find({ userId: currentUser.id }).sort({ date: -1 }).limit(20));
             case 'getShorts': return res.json(await Short.find({}).sort({ addedAt: -1 }));
             case 'getSettings': {
+                if (!data.key) return res.status(400).json({ message: "Settings key required." });
                 const doc = await Setting.findById(data.key);
                 return res.json(doc?.data || {});
             }
 
+            // --- USER WITHDRAWAL HISTORY ---
+            case 'getWithdrawals':
+                return res.json(await Withdrawal.find({ userId: currentUser.id }).sort({ date: -1 }));
+
             // --- ADMIN ACTIONS ---
             case 'getAllUsers':
-                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
-                return res.json(await User.find({}));
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Access Denied: Administrative role required." });
+                return res.json(await User.find({}).limit(500));
             
-            case 'getAllWithdrawals':
-                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
-                return res.json(await Withdrawal.find({}));
+            case 'adminGetWithdrawals':
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Access Denied: Administrative role required." });
+                return res.json(await Withdrawal.find({}).sort({ date: -1 }));
 
             case 'updateWithdrawal': {
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
@@ -194,7 +205,6 @@ export default async function handler(req, res) {
                 const withdrawal = await Withdrawal.findOne({ id });
                 if (!withdrawal) return res.status(404).json({ message: "Request not found" });
                 
-                // Refund if rejected
                 if (status === 'REJECTED' && withdrawal.status === 'PENDING') {
                     await User.updateOne({ id: withdrawal.userId }, { $inc: { balance: withdrawal.amount } });
                     await Transaction.create({
@@ -245,7 +255,7 @@ export default async function handler(req, res) {
             // --- USER ACTIONS ---
             case 'createWithdrawal': {
                 const { request } = data;
-                if (currentUser.balance < request.amount) return res.status(400).json({ message: "Insufficient balance" });
+                if (currentUser.balance < request.amount) return res.status(400).json({ message: "Insufficient balance for withdrawal." });
                 
                 currentUser.balance -= request.amount;
                 await currentUser.save();
@@ -272,7 +282,7 @@ export default async function handler(req, res) {
             case 'completeTask': {
                 const { taskId } = data;
                 const task = await Task.findOne({ id: taskId });
-                if (!task) return res.status(404).json({ message: "Task not found" });
+                if (!task) return res.status(404).json({ message: "Task no longer available." });
 
                 currentUser.balance += task.reward;
                 await currentUser.save();
@@ -292,28 +302,25 @@ export default async function handler(req, res) {
 
             case 'processReferral': {
                 const { userId, code } = data;
-                if (currentUser.referredBy) return res.status(400).json({ message: "Already referred" });
-                if (code === currentUser.id) return res.status(400).json({ message: "Cannot refer yourself" });
+                if (currentUser.referredBy) return res.status(400).json({ message: "Referral already claimed." });
+                if (code === currentUser.id) return res.status(400).json({ message: "Cannot refer oneself." });
                 
                 const referrer = await User.findOne({ id: code });
-                if (!referrer) return res.status(404).json({ message: "Referrer not found" });
+                if (!referrer) return res.status(404).json({ message: "Referral code invalid or expired." });
 
-                // Update Referrer
                 referrer.balance += 25;
                 referrer.referralCount += 1;
                 referrer.referralEarnings += 25;
                 await referrer.save();
 
-                // Update Current User
                 currentUser.balance += 10;
                 currentUser.referredBy = code;
                 await currentUser.save();
 
-                // Create Transactions
                 await Transaction.create({ id: 'tx_r1_' + Date.now(), userId: referrer.id, amount: 25, type: 'REFERRAL', description: `Referral Bonus: ${currentUser.name}`, date: new Date().toISOString() });
                 await Transaction.create({ id: 'tx_r2_' + Date.now(), userId: currentUser.id, amount: 10, type: 'BONUS', description: `Referral Join Bonus`, date: new Date().toISOString() });
 
-                return res.json({ success: true, message: "Referral bonus applied!" });
+                return res.json({ success: true, message: "Referral reward processed." });
             }
 
             case 'completeShort': {
@@ -326,7 +333,7 @@ export default async function handler(req, res) {
                 if (lastWatchedStr) {
                     const lastWatched = new Date(lastWatchedStr);
                     const diffHours = (now.getTime() - lastWatched.getTime()) / (1000 * 60 * 60);
-                    if (diffHours < 24) return res.status(400).json({ message: "Cooldown active (24h)" });
+                    if (diffHours < 24) return res.status(400).json({ message: "Video cooldown active (24h)." });
                 }
                 if (currentUser.shortsData.lastResetDate !== todayStr) {
                     currentUser.shortsData.watchedTodayCount = 0;
@@ -346,7 +353,7 @@ export default async function handler(req, res) {
 
             case 'dailyCheckIn': {
                 const today = new Date().toISOString().split('T')[0];
-                if (currentUser.lastDailyCheckIn === today) return res.status(400).json({ message: "Already claimed." });
+                if (currentUser.lastDailyCheckIn === today) return res.status(400).json({ message: "Reward already claimed today." });
                 const sys = await Setting.findById('system');
                 const reward = Number(sys?.data?.dailyRewardBase) || 10;
                 await User.updateOne({ id: currentUser.id }, { $set: { lastDailyCheckIn: today }, $inc: { balance: reward, dailyStreak: 1 } });
@@ -354,8 +361,32 @@ export default async function handler(req, res) {
                 return res.json({ success: true, reward });
             }
 
+            case 'playMiniGame': {
+                const { gameType } = data;
+                if (!gameType) return res.status(400).json({ message: "Game type required." });
+                const today = new Date().toISOString().split('T')[0];
+                const gamesSetting = await Setting.findById('games');
+                const config = gamesSetting?.data?.[gameType] || { isEnabled: true, dailyLimit: 10, minReward: 1, maxReward: 10 };
+                
+                if (!config.isEnabled) return res.status(400).json({ message: "Game is temporarily unavailable." });
+
+                let stats = currentUser.gameStats || {};
+                if (stats.lastPlayedDate !== today) stats = { lastPlayedDate: today, spinCount: 0, scratchCount: 0, guessCount: 0, lotteryCount: 0 };
+                
+                const countKey = `${gameType}Count`;
+                if (stats[countKey] >= config.dailyLimit) return res.status(400).json({ message: "Daily play limit reached for this game." });
+
+                const reward = Math.floor(Math.random() * (config.maxReward - config.minReward + 1)) + config.minReward;
+                stats[countKey]++;
+
+                await User.updateOne({ id: currentUser.id }, { $inc: { balance: reward }, $set: { gameStats: stats } });
+                await Transaction.create({ id: 'tx_g_' + Date.now(), userId: currentUser.id, amount: reward, type: 'GAME', description: `Mini-Game Win: ${gameType}`, date: new Date().toISOString() });
+
+                return res.json({ success: true, reward, message: `Successfully earned ${reward} points.`, left: config.dailyLimit - stats[countKey] });
+            }
+
             case 'saveSettings':
-                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin only" });
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Administrative privileges required." });
                 await Setting.findOneAndUpdate({ _id: data.key }, { data: data.payload }, { upsert: true });
                 return res.json({ success: true });
             
@@ -365,10 +396,15 @@ export default async function handler(req, res) {
                 await Short.create({ id: 'v_' + Date.now(), youtubeId: vId, url: data.url, addedAt: new Date().toISOString() });
                 return res.json({ success: true });
 
-            default: return res.status(400).json({ message: "Unknown action: " + action });
+            case 'deleteShort':
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin only" });
+                await Short.deleteOne({ id: data.id });
+                return res.json({ success: true });
+
+            default: return res.status(400).json({ message: "Unknown action protocol: " + action });
         }
     } catch (e) {
-        console.error("Handler Error", e);
-        return res.status(500).json({ message: "Server sync lost: " + e.message });
+        console.error("Handler Error:", e);
+        return res.status(500).json({ message: "Core synchronization failed: " + (e.message || "Internal Engine Error") });
     }
 }
