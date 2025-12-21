@@ -224,11 +224,19 @@ export const processReferral = async (userId: string, code: string) => {
 }
 
 export const getPaymentMethods = async (): Promise<WithdrawalMethod[]> => {
-    const data = await apiCall('getSettings', { key: 'payment_methods' }, true);
-    if (!data) return [];
-    if (Array.isArray(data)) return data;
-    if (data.methods && Array.isArray(data.methods)) return data.methods;
-    return [];
+    try {
+        const data = await apiCall('getSettings', { key: 'payment_methods' }, true);
+        if (!data) return [];
+        // Handle direct array response
+        if (Array.isArray(data)) return data;
+        // Handle wrapped object response
+        if (data.methods && Array.isArray(data.methods)) return data.methods;
+        // Check if data is an object but empty or irrelevant
+        return [];
+    } catch (e) {
+        console.warn("Could not fetch payment methods:", e);
+        return [];
+    }
 };
 
 export const updateAllPaymentMethods = async (methods: WithdrawalMethod[]) => {

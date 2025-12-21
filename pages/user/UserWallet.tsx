@@ -23,42 +23,53 @@ export const UserWallet: React.FC = () => {
     if (!userId) return;
     try {
         if (isMounted.current) setLoading(true);
+        setMessage('');
+
+        // Use individual try-catches to ensure one failure doesn't block everything
         
-        // Parallel fetch for speed
-        const [userData, allWithdrawals, fetchedMethods, settings] = await Promise.all([
-            getUserById(userId),
-            getWithdrawals(),
-            getPaymentMethods(),
-            getSystemSettings()
-        ]);
-
-        if (!isMounted.current) return;
-
-        if (userData) {
-            setUser(userData);
-        }
-        
-        if (settings) {
-            setSystemSettings(settings);
-        }
-
-        // history is already filtered by current user in the backend now
-        if (Array.isArray(allWithdrawals)) {
-            setHistory([...allWithdrawals]);
+        // 1. Load User & Settings (Mandatory)
+        try {
+            const [userData, settings] = await Promise.all([
+                getUserById(userId),
+                getSystemSettings()
+            ]);
+            if (isMounted.current) {
+                if (userData) setUser(userData);
+                if (settings) setSystemSettings(settings);
+            }
+        } catch (e) {
+            console.error("User/Settings load error", e);
+            if (isMounted.current) setMessage("Core sync failed. Retrying...");
         }
 
-        // Logic fix: Ensure methods is an array and filter active ones
-        const methodsArray = Array.isArray(fetchedMethods) ? fetchedMethods : [];
-        const activeMethods = methodsArray.filter(m => m.isEnabled);
-        
-        setAvailableMethods(activeMethods);
-        
-        if (activeMethods.length > 0 && !methodId) {
-            setMethodId(activeMethods[0].id);
+        // 2. Load Payment Methods
+        try {
+            const fetchedMethods = await getPaymentMethods();
+            if (isMounted.current) {
+                const methodsArray = Array.isArray(fetchedMethods) ? fetchedMethods : [];
+                const activeMethods = methodsArray.filter(m => m.isEnabled);
+                setAvailableMethods(activeMethods);
+                if (activeMethods.length > 0 && !methodId) {
+                    setMethodId(activeMethods[0].id);
+                }
+            }
+        } catch (e) {
+            console.error("Payment methods error", e);
         }
+
+        // 3. Load History
+        try {
+            const allWithdrawals = await getWithdrawals();
+            if (isMounted.current && Array.isArray(allWithdrawals)) {
+                setHistory([...allWithdrawals]);
+            }
+        } catch (e) {
+            console.error("History load error", e);
+        }
+
     } catch (e: any) {
-        console.error("Wallet sync error", e);
-        if (isMounted.current) setMessage("Failed to sync wallet data. Please try again.");
+        console.error("Critical wallet sync error", e);
+        if (isMounted.current) setMessage("Critical network sync error.");
     } finally {
         if (isMounted.current) setLoading(false);
     }
@@ -93,18 +104,19 @@ export const UserWallet: React.FC = () => {
         const minAmount = systemSettings?.minWithdrawal || 50;
 
         if (val < minAmount) {
-            setMessage(`Min withdrawal is ${minAmount} Points.`);
+            setMessage(`Minimum withdrawal is ${minAmount} Points.`);
             setIsSubmitting(false);
             return;
         }
         if ((freshUser?.balance || 0) < val) {
-            setMessage('Insufficient balance.');
+            setMessage('Insufficient points balance.');
             setIsSubmitting(false);
             return;
         }
 
+        // Create with high-entropy ID to avoid DB unique collisions
         const req: Partial<WithdrawalRequest> = {
-            id: 'w_' + Date.now(),
+            id: 'w_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
             amount: val,
             method: selectedMethod?.name || 'Standard',
             details,
@@ -113,14 +125,14 @@ export const UserWallet: React.FC = () => {
         
         await createWithdrawal(req as WithdrawalRequest);
         if (isMounted.current) {
-            setMessage('Success! Request submitted.');
+            setMessage('SUCCESS: Request submitted to queue.');
             setAmount('');
             setDetails('');
             fetchData();
         }
 
     } catch (err: any) {
-        if (isMounted.current) setMessage(err.message || 'Processing error.');
+        if (isMounted.current) setMessage(err.message || 'Processing error. Try again.');
     } finally {
         if (isMounted.current) setIsSubmitting(false);
     }
@@ -129,7 +141,7 @@ export const UserWallet: React.FC = () => {
   if (loading && !user) return (
     <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-4">
         <Loader2 className="animate-spin text-blue-500" size={32} />
-        <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Refreshing Wallet Data...</p>
+        <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest">Accessing Ledger...</p>
     </div>
   );
 
