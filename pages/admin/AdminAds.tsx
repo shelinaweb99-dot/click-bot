@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getAdSettings, saveAdSettings, subscribeToChanges } from '../../services/mockDb';
 import { AdSettings, AdProvider, AdLink, RotationMode, AdRotationConfig } from '../../types';
+// Import DEFAULT_MONETAG_SCRIPT to resolve the reference error
+import { DEFAULT_MONETAG_SCRIPT } from '../../components/AdSimulator';
 import { 
   MonitorPlay, 
   Save, 
@@ -10,14 +12,12 @@ import {
   RefreshCw, 
   ToggleLeft, 
   ToggleRight, 
-  Link as LinkIcon, 
   Loader2, 
   AlertCircle,
-  ExternalLink,
-  ShieldCheck,
   Zap,
   Layout,
-  Info
+  Info,
+  ShieldCheck
 } from 'lucide-react';
 
 export const AdminAds: React.FC = () => {
@@ -48,8 +48,6 @@ export const AdminAds: React.FC = () => {
   };
 
   const [settings, setSettings] = useState<AdSettings>(defaultAdSettings);
-  const [newLink, setNewLink] = useState('');
-  const [newLinkProvider, setNewLinkProvider] = useState<'ADSTERRA' | 'MONETAG'>('MONETAG');
 
   const loadData = async () => {
     try {
@@ -99,45 +97,6 @@ export const AdminAds: React.FC = () => {
     }
   };
 
-  const addRotationLink = () => {
-    if (!newLink) return;
-    const link: AdLink = {
-      id: Date.now().toString(),
-      url: newLink,
-      provider: newLinkProvider,
-      isEnabled: true,
-      clicks: 0
-    };
-    setSettings(prev => ({
-      ...prev,
-      rotation: {
-        ...prev.rotation!,
-        links: [...(prev.rotation?.links || []), link]
-      }
-    }));
-    setNewLink('');
-  };
-
-  const removeRotationLink = (id: string) => {
-    setSettings(prev => ({
-      ...prev,
-      rotation: {
-        ...prev.rotation!,
-        links: prev.rotation!.links.filter(l => l.id !== id)
-      }
-    }));
-  };
-
-  const toggleRotationLink = (id: string) => {
-    setSettings(prev => ({
-      ...prev,
-      rotation: {
-        ...prev.rotation!,
-        links: prev.rotation!.links.map(l => l.id === id ? { ...l, isEnabled: !l.isEnabled } : l)
-      }
-    }));
-  };
-
   if (loading) return (
     <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-6">
       <Loader2 className="animate-spin text-blue-500" size={48} />
@@ -155,7 +114,7 @@ export const AdminAds: React.FC = () => {
             </div>
             <h1 className="text-4xl font-black text-white tracking-tighter">Ads Control</h1>
           </div>
-          <p className="text-gray-500 font-bold uppercase text-[10px] tracking-[0.2em] ml-1">Monetization Engine & Fallbacks</p>
+          <p className="text-gray-500 font-bold uppercase text-[10px] tracking-[0.2em] ml-1">Monetag Telegram Integration</p>
         </div>
         <button 
           onClick={handleSave}
@@ -168,7 +127,7 @@ export const AdminAds: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Telegram Ads IDs */}
+        {/* Main Telegram SDK Config */}
         <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl space-y-8">
           <div className="flex items-center gap-3">
              <div className="bg-indigo-500/10 p-2 rounded-lg text-indigo-500 border border-indigo-500/10">
@@ -177,8 +136,15 @@ export const AdminAds: React.FC = () => {
              <h2 className="text-xl font-black text-white tracking-tight uppercase">Telegram SDK Ads</h2>
           </div>
 
+          <div className="bg-blue-500/5 p-5 rounded-2xl border border-blue-500/10 flex gap-4 items-start">
+              <Info className="text-blue-500 shrink-0" size={20} />
+              <p className="text-gray-400 text-[11px] leading-relaxed">
+                  Enter your Monetag Zone IDs below. The app will automatically load the script and call the appropriate function (e.g., <code className="text-blue-400">show_12345()</code>) when the user completes a task or game.
+              </p>
+          </div>
+
           <div className="space-y-6">
-             <div className="space-y-4">
+             <div className="space-y-2.5">
                 <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Rewarded Interstitial Zone ID</label>
                 <input 
                    type="text" 
@@ -188,7 +154,7 @@ export const AdminAds: React.FC = () => {
                    onChange={e => setSettings({ ...settings, monetagRewardedInterstitialId: e.target.value })}
                 />
              </div>
-             <div className="space-y-4">
+             <div className="space-y-2.5">
                 <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Rewarded Popup Zone ID</label>
                 <input 
                    type="text" 
@@ -198,7 +164,7 @@ export const AdminAds: React.FC = () => {
                    onChange={e => setSettings({ ...settings, monetagRewardedPopupId: e.target.value })}
                 />
              </div>
-             <div className="space-y-4">
+             <div className="space-y-2.5">
                 <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">In-App Interstitial Zone ID</label>
                 <input 
                    type="text" 
@@ -211,18 +177,18 @@ export const AdminAds: React.FC = () => {
           </div>
         </div>
 
-        {/* Legacy Monetag / Adsterra Settings */}
+        {/* Global Fallback Config */}
         <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl space-y-8">
           <div className="flex items-center gap-3">
              <div className="bg-yellow-500/10 p-2 rounded-lg text-yellow-500 border border-yellow-500/10">
                 <Zap size={20} />
              </div>
-             <h2 className="text-xl font-black text-white tracking-tight uppercase">Legacy & Fallback</h2>
+             <h2 className="text-xl font-black text-white tracking-tight uppercase">Advanced & Fallback</h2>
           </div>
 
-          <div className="space-y-6 pt-4">
-             <div className="space-y-4">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Universal Tag (Script URL)</label>
+          <div className="space-y-6">
+             <div className="space-y-2.5">
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Universal Tag (SDK Script URL)</label>
                 <input 
                    type="text" 
                    className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-[10px] shadow-inner transition-all"
@@ -230,10 +196,11 @@ export const AdminAds: React.FC = () => {
                    value={settings.monetagAdTag || ''}
                    onChange={e => setSettings({ ...settings, monetagAdTag: e.target.value })}
                 />
+                <p className="text-gray-600 text-[9px] font-bold italic ml-1">Default: {DEFAULT_MONETAG_SCRIPT}</p>
              </div>
              
-             <div className="space-y-4">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Standard Zone ID</label>
+             <div className="space-y-2.5">
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">General Fallback Zone ID</label>
                 <input 
                    type="text" 
                    className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
@@ -243,7 +210,7 @@ export const AdminAds: React.FC = () => {
                 />
              </div>
 
-             <div className="space-y-4">
+             <div className="space-y-2.5">
                 <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Direct Link (Global Fallback)</label>
                 <input 
                    type="text" 
@@ -257,81 +224,11 @@ export const AdminAds: React.FC = () => {
         </div>
       </div>
       
-      {/* Rotation Engine */}
-      <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
-          <div className="flex justify-between items-center mb-8">
-            <h2 className="text-xl font-black text-white tracking-tight uppercase flex items-center gap-3">
-               <RefreshCw className="text-purple-500" size={20} /> Rotation Engine
-            </h2>
-            <button 
-              onClick={() => setSettings({ ...settings, rotation: { ...settings.rotation!, isEnabled: !settings.rotation?.isEnabled }})}
-              className={`transition-all ${settings.rotation?.isEnabled ? 'text-green-500' : 'text-gray-700'}`}
-            >
-              {settings.rotation?.isEnabled ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
-            </button>
-          </div>
-          
-          <div className="bg-[#0b1120] p-6 rounded-[2rem] border border-white/5 space-y-6">
-                <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Add Dynamic Link</h4>
-                <div className="flex gap-2">
-                   <select 
-                      className="bg-gray-900 text-white px-3 py-1 rounded-xl text-[10px] font-black uppercase outline-none border border-white/5"
-                      value={newLinkProvider}
-                      onChange={e => setNewLinkProvider(e.target.value as any)}
-                   >
-                      <option value="MONETAG">Monetag</option>
-                      <option value="ADSTERRA">Adsterra</option>
-                   </select>
-                   <input 
-                      type="text"
-                      className="flex-1 bg-black text-white p-4 rounded-xl text-[10px] font-mono outline-none border border-white/5"
-                      placeholder="Paste rotation URL..."
-                      value={newLink}
-                      onChange={e => setNewLink(e.target.value)}
-                   />
-                   <button 
-                     onClick={addRotationLink}
-                     className="bg-blue-600 p-4 rounded-xl text-white shadow-lg active:scale-90 transition-transform"
-                   >
-                      <Plus size={20} />
-                   </button>
-                </div>
-
-                {/* --- THIS WAS MISSING: The list of added links --- */}
-                <div className="space-y-3 mt-8">
-                   {settings.rotation?.links.length === 0 ? (
-                      <p className="text-center text-gray-600 text-[10px] font-bold uppercase italic py-4">No rotation links added yet.</p>
-                   ) : (
-                      settings.rotation?.links.map(link => (
-                         <div key={link.id} className="bg-black/40 p-4 rounded-2xl flex items-center justify-between border border-white/5 group transition-all hover:border-blue-500/30">
-                            <div className="flex items-center gap-3 min-w-0">
-                               <div className={`p-2 rounded-lg text-[8px] font-black uppercase ${link.provider === 'MONETAG' ? 'bg-indigo-600/20 text-indigo-400' : 'bg-emerald-600/20 text-emerald-400'}`}>
-                                  {link.provider.substring(0, 1)}
-                               </div>
-                               <div className="min-w-0">
-                                  <p className="text-white text-[10px] font-bold truncate pr-4">{link.url}</p>
-                                  <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">{link.provider}</p>
-                               </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                               <button 
-                                 onClick={() => toggleRotationLink(link.id)}
-                                 className={`p-2 rounded-xl transition-colors ${link.isEnabled ? 'text-green-500' : 'text-gray-600'}`}
-                               >
-                                  {link.isEnabled ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
-                               </button>
-                               <button 
-                                 onClick={() => removeRotationLink(link.id)}
-                                 className="p-2 text-gray-600 hover:text-red-500 transition-colors"
-                               >
-                                  <Trash2 size={16} />
-                               </button>
-                            </div>
-                         </div>
-                      ))
-                   )}
-                </div>
-          </div>
+      <div className="bg-blue-600/5 p-10 rounded-[3rem] border border-blue-500/10 text-center">
+          <ShieldCheck size={40} className="text-blue-500 mx-auto mb-4" />
+          <p className="text-gray-500 text-[11px] font-black uppercase tracking-widest leading-relaxed">
+              Monetization Node Synchronized &bull; 2025 Root Authority
+          </p>
       </div>
     </div>
   );
