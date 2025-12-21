@@ -26,7 +26,7 @@ export enum WithdrawalStatus {
 export interface WithdrawalMethod {
   id: string;
   name: string;
-  detailsLabel: string; // e.g. "Wallet Address" or "Phone Number"
+  detailsLabel: string;
   isEnabled: boolean;
 }
 
@@ -36,7 +36,6 @@ export enum AdProvider {
   TELEGRAM_ADS = 'TELEGRAM_ADS'
 }
 
-// --- NEW ROTATION TYPES ---
 export type RotationMode = 'SERIAL' | 'RANDOM';
 
 export interface AdLink {
@@ -44,47 +43,45 @@ export interface AdLink {
   url: string;
   provider: 'ADSTERRA' | 'MONETAG';
   isEnabled: boolean;
-  clicks?: number; // Optional analytics
+  clicks?: number;
 }
 
 export interface AdRotationConfig {
   isEnabled: boolean;
   mode: RotationMode;
   intervalMinutes: number;
-  lastRotationTime: number; // Timestamp
+  lastRotationTime: number;
   currentLinkIndex: number;
   links: AdLink[];
 }
-// --------------------------
+
+export type MonetagAdType = 'REWARDED_INTERSTITIAL' | 'REWARDED_POPUP' | 'INTERSTITIAL' | 'DIRECT';
 
 export interface AdSettings {
   activeProvider: AdProvider;
-  // Monetag Specifics
-  monetagDirectLink: string; // General/SmartLink
-  monetagInterstitialUrl?: string; // For In-App Interstitial
-  monetagRewardedUrl?: string; // For Rewarded Video
-  monetagAdTag?: string; // Stores the Script Source URL (src)
-  monetagZoneId?: string; // NEW: Stores the numeric Zone ID (e.g., 10305424)
-  monetagPopupUrl?: string;
+  monetagDirectLink: string;
+  monetagAdTag?: string;
+  monetagZoneId?: string; // Standard Tag
+  
+  // Telegram Mini App Specific IDs
+  monetagRewardedInterstitialId?: string;
+  monetagRewardedPopupId?: string;
+  monetagInterstitialId?: string;
   
   adsterraLink: string;
   telegramChannelLink: string;
-
-  // New Rotation Config embedded in settings or separate
   rotation?: AdRotationConfig;
 }
 
 export interface SystemSettings {
-  telegramBotToken: string; // Required for real verification
-  supportLink?: string; // e.g. https://t.me/admin
-  requiredChannelId?: string; // ANTI-CHEAT: User must join this to withdraw (@channel)
-  youtubeApiKey?: string; // YouTube Data API Key
-  
-  // Financial Controls
+  telegramBotToken: string;
+  supportLink?: string;
+  requiredChannelId?: string;
+  youtubeApiKey?: string;
   minWithdrawal?: number;
   dailyRewardBase?: number;
   dailyRewardStreakBonus?: number;
-  pointsPerDollar?: number; // New: Exchange Rate
+  pointsPerDollar?: number;
 }
 
 export interface Announcement {
@@ -109,10 +106,9 @@ export interface GameSettings {
   lottery: GameConfig;
 }
 
-// --- SHORTS FEATURE TYPES ---
 export interface ShortVideo {
   id: string;
-  youtubeId: string; // Extracted ID
+  youtubeId: string;
   url: string;
   title?: string;
   addedAt: string;
@@ -120,56 +116,46 @@ export interface ShortVideo {
 
 export interface ShortsSettings {
   isEnabled: boolean;
-  pointsPerVideo: number; // 0 if only ads pay
+  pointsPerVideo: number;
   pointsPerAd: number;
-  adFrequency: number; // e.g., every 3 videos
-  minWatchTimeSec: number; // e.g., 5 seconds
-  shortsKeywords?: string; // Keywords for auto-fetching (e.g. "funny shorts")
-  maxDailyVideos?: number; // Optional limit to prevent bot abuse
+  adFrequency: number;
+  minWatchTimeSec: number;
+  shortsKeywords?: string;
+  maxDailyVideos?: number;
 }
 
 export interface UserShortsData {
-  lastWatched: Record<string, string>; // videoId -> ISO Date String
+  lastWatched: Record<string, string>;
   watchedTodayCount: number;
-  lastResetDate: string; // YYYY-MM-DD
+  lastResetDate: string;
 }
-// ----------------------------
 
 export interface User {
   id: string;
   name: string;
   email: string;
   country: string;
-  password?: string; // In real app, never store plain text
+  password?: string;
   role: UserRole;
   balance: number;
   blocked: boolean;
   joinedAt: string;
-  telegramId?: number; // For Auto-Login via Telegram
-  
-  // New Features
-  referralCode?: string; // Usually their ID
-  referredBy?: string; // ID of the person who invited them
+  telegramId?: number;
+  referralCode?: string;
+  referredBy?: string;
   referralCount?: number;
   referralEarnings?: number;
-  
-  lastDailyCheckIn?: string; // ISO Date string of last claim
-  dailyStreak?: number; // Current day streak
-
-  // ANTI-CHEAT
+  lastDailyCheckIn?: string;
+  dailyStreak?: number;
   ipAddress?: string;
   deviceId?: string;
-
-  // Games Stats
   gameStats?: {
-    lastPlayedDate: string; // YYYY-MM-DD
+    lastPlayedDate: string;
     spinCount: number;
     scratchCount: number;
     guessCount: number;
     lotteryCount: number;
   };
-
-  // Shorts Data
   shortsData?: UserShortsData;
 }
 
@@ -178,11 +164,11 @@ export interface Task {
   title: string;
   type: TaskType;
   reward: number;
-  url?: string; // For YT or Website
-  channelUsername?: string; // For Telegram (e.g. @mychannel)
-  instructions?: string; // For Custom
-  durationSeconds: number; // For timer
-  totalLimit: number; // Max people who can do it
+  url?: string;
+  channelUsername?: string;
+  instructions?: string;
+  durationSeconds: number;
+  totalLimit: number;
   completedCount: number;
   status: TaskStatus;
 }
@@ -193,7 +179,7 @@ export interface WithdrawalRequest {
   userName: string;
   method: string;
   amount: number;
-  details: string; // e.g., phone number or wallet address
+  details: string;
   status: WithdrawalStatus;
   date: string;
 }
@@ -205,5 +191,5 @@ export interface Transaction {
   type: 'EARNING' | 'WITHDRAWAL' | 'REFERRAL' | 'BONUS' | 'GAME' | 'SHORTS';
   description: string;
   date: string;
-  taskId?: string; // Added to track which task generated this earning
+  taskId?: string;
 }

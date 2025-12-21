@@ -15,7 +15,8 @@ import {
   AlertCircle,
   ExternalLink,
   ShieldCheck,
-  Zap
+  Zap,
+  Layout
 } from 'lucide-react';
 
 export const AdminAds: React.FC = () => {
@@ -38,6 +39,9 @@ export const AdminAds: React.FC = () => {
     monetagDirectLink: '',
     monetagAdTag: '',
     monetagZoneId: '',
+    monetagRewardedInterstitialId: '',
+    monetagRewardedPopupId: '',
+    monetagInterstitialId: '',
     adsterraLink: '',
     telegramChannelLink: '',
     rotation: defaultRotation
@@ -53,7 +57,6 @@ export const AdminAds: React.FC = () => {
       setError(null);
       const data = await getAdSettings();
       if (isMounted.current) {
-        // Merge with defaults to ensure all keys exist for the UI
         setSettings({
           ...defaultAdSettings,
           ...data,
@@ -142,17 +145,6 @@ export const AdminAds: React.FC = () => {
     </div>
   );
 
-  if (error) return (
-    <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 bg-red-500/5 rounded-[2.5rem] border border-red-500/10 text-center">
-      <AlertCircle className="text-red-500 mb-4" size={48} />
-      <h2 className="text-xl font-black text-white uppercase tracking-tight">System Desync</h2>
-      <p className="text-gray-500 text-sm mt-2 mb-8">{error}</p>
-      <button onClick={loadData} className="bg-blue-600 px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2">
-        <RefreshCw size={18} /> Reconnect Node
-      </button>
-    </div>
-  );
-
   return (
     <div className="space-y-10 animate-in fade-in duration-700 pb-16">
       <div className="flex justify-between items-end">
@@ -177,7 +169,52 @@ export const AdminAds: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
-        {/* Ad Provider Selection */}
+        {/* Monetag Telegram SDK IDs */}
+        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl space-y-8">
+          <div className="flex items-center gap-3">
+             <div className="bg-indigo-500/10 p-2 rounded-lg text-indigo-500 border border-indigo-500/10">
+                <Layout size={20} />
+             </div>
+             <h2 className="text-xl font-black text-white tracking-tight uppercase">Telegram SDK Ads</h2>
+          </div>
+
+          <div className="space-y-6">
+             <div className="space-y-4">
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Rewarded Interstitial Zone ID</label>
+                <input 
+                   type="text" 
+                   className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
+                   placeholder="e.g. 8621458"
+                   value={settings.monetagRewardedInterstitialId || ''}
+                   onChange={e => setSettings({ ...settings, monetagRewardedInterstitialId: e.target.value })}
+                />
+             </div>
+             
+             <div className="space-y-4">
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Rewarded Popup Zone ID</label>
+                <input 
+                   type="text" 
+                   className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
+                   placeholder="e.g. 8621459"
+                   value={settings.monetagRewardedPopupId || ''}
+                   onChange={e => setSettings({ ...settings, monetagRewardedPopupId: e.target.value })}
+                />
+             </div>
+
+             <div className="space-y-4">
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">In-App Interstitial Zone ID</label>
+                <input 
+                   type="text" 
+                   className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
+                   placeholder="e.g. 8621460"
+                   value={settings.monetagInterstitialId || ''}
+                   onChange={e => setSettings({ ...settings, monetagInterstitialId: e.target.value })}
+                />
+             </div>
+          </div>
+        </div>
+
+        {/* Legacy Monetag / Adsterra Settings */}
         <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl space-y-8">
           <div className="flex items-center gap-3">
              <div className="bg-yellow-500/10 p-2 rounded-lg text-yellow-500 border border-yellow-500/10">
@@ -207,23 +244,8 @@ export const AdminAds: React.FC = () => {
           </div>
 
           <div className="space-y-6 pt-4">
-             {/* Monetag Config */}
              <div className="space-y-4">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Monetag Node (Zone ID)</label>
-                <div className="relative">
-                   <ShieldCheck className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-700" size={18} />
-                   <input 
-                      type="text" 
-                      className="w-full bg-[#0b1120] border border-white/5 text-white p-5 pl-14 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
-                      placeholder="e.g. 10305424"
-                      value={settings.monetagZoneId || ''}
-                      onChange={e => setSettings({ ...settings, monetagZoneId: e.target.value })}
-                   />
-                </div>
-             </div>
-             
-             <div className="space-y-4">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Ad Script URL</label>
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Universal Tag (Script URL)</label>
                 <input 
                    type="text" 
                    className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-[10px] shadow-inner transition-all"
@@ -232,32 +254,38 @@ export const AdminAds: React.FC = () => {
                    onChange={e => setSettings({ ...settings, monetagAdTag: e.target.value })}
                 />
              </div>
+             
+             <div className="space-y-4">
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Legacy Zone ID</label>
+                <input 
+                   type="text" 
+                   className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
+                   placeholder="Standard Zone"
+                   value={settings.monetagZoneId || ''}
+                   onChange={e => setSettings({ ...settings, monetagZoneId: e.target.value })}
+                />
+             </div>
 
              <div className="space-y-4">
                 <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Direct Link (Fallback)</label>
-                <div className="relative">
-                   <LinkIcon className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-700" size={18} />
-                   <input 
-                      type="text" 
-                      className="w-full bg-[#0b1120] border border-white/5 text-white p-5 pl-14 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-[10px] shadow-inner transition-all"
-                      placeholder="https://... direct link"
-                      value={settings.monetagDirectLink || ''}
-                      onChange={e => setSettings({ ...settings, monetagDirectLink: e.target.value })}
-                   />
-                </div>
+                <input 
+                   type="text" 
+                   className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-[10px] shadow-inner transition-all"
+                   placeholder="https://... direct link"
+                   value={settings.monetagDirectLink || ''}
+                   onChange={e => setSettings({ ...settings, monetagDirectLink: e.target.value })}
+                />
              </div>
           </div>
         </div>
-
-        {/* Ad Rotation System */}
-        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl flex flex-col">
+      </div>
+      
+      {/* Rotation System Section (Condensed) */}
+      <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
           <div className="flex justify-between items-center mb-8">
-            <div className="flex items-center gap-3">
-               <div className="bg-purple-500/10 p-2 rounded-lg text-purple-500 border border-purple-500/10">
-                  <RefreshCw size={20} />
-               </div>
-               <h2 className="text-xl font-black text-white tracking-tight uppercase">Rotation Hub</h2>
-            </div>
+            <h2 className="text-xl font-black text-white tracking-tight uppercase flex items-center gap-3">
+               <RefreshCw className="text-purple-500" size={20} /> Rotation Engine
+            </h2>
             <button 
               onClick={() => setSettings({ ...settings, rotation: { ...settings.rotation!, isEnabled: !settings.rotation?.isEnabled }})}
               className={`transition-all ${settings.rotation?.isEnabled ? 'text-green-500' : 'text-gray-700'}`}
@@ -265,32 +293,8 @@ export const AdminAds: React.FC = () => {
               {settings.rotation?.isEnabled ? <ToggleRight size={32} /> : <ToggleLeft size={32} />}
             </button>
           </div>
-
-          <div className="flex-1 space-y-6">
-             <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                   <label className="text-gray-500 text-[9px] font-black uppercase tracking-widest ml-1">Rotation Mode</label>
-                   <select 
-                      className="w-full bg-[#0b1120] text-white p-4 rounded-xl border border-white/5 font-black text-[10px] uppercase outline-none"
-                      value={settings.rotation?.mode}
-                      onChange={e => setSettings({ ...settings, rotation: { ...settings.rotation!, mode: e.target.value as RotationMode }})}
-                   >
-                      <option value="SERIAL">Serial Sequence</option>
-                      <option value="RANDOM">Random Chaos</option>
-                   </select>
-                </div>
-                <div className="space-y-2">
-                   <label className="text-gray-500 text-[9px] font-black uppercase tracking-widest ml-1">Interval (Min)</label>
-                   <input 
-                      type="number"
-                      className="w-full bg-[#0b1120] text-white p-4 rounded-xl border border-white/5 font-black text-[10px] outline-none"
-                      value={settings.rotation?.intervalMinutes}
-                      onChange={e => setSettings({ ...settings, rotation: { ...settings.rotation!, intervalMinutes: parseInt(e.target.value) || 0 }})}
-                   />
-                </div>
-             </div>
-
-             <div className="bg-[#0b1120] p-6 rounded-[2rem] border border-white/5 space-y-4">
+          
+          <div className="bg-[#0b1120] p-6 rounded-[2rem] border border-white/5 space-y-4">
                 <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Add Dynamic Link</h4>
                 <div className="flex gap-2">
                    <select 
@@ -315,41 +319,7 @@ export const AdminAds: React.FC = () => {
                       <Plus size={20} />
                    </button>
                 </div>
-             </div>
-
-             <div className="space-y-3 max-h-[300px] overflow-y-auto no-scrollbar pr-2">
-                {settings.rotation?.links.length === 0 ? (
-                  <p className="text-center text-gray-700 text-[10px] font-black uppercase py-10 italic">No dynamic links in queue</p>
-                ) : (
-                  settings.rotation?.links.map(link => (
-                    <div key={link.id} className="bg-[#0b1120] p-4 rounded-2xl border border-white/5 flex items-center justify-between group">
-                       <div className="flex items-center gap-4 min-w-0 pr-4">
-                          <div className={`w-2 h-2 rounded-full ${link.isEnabled ? 'bg-green-500 animate-pulse' : 'bg-gray-800'}`}></div>
-                          <div className="min-w-0">
-                             <p className="text-[10px] font-black text-white tracking-tight truncate uppercase">{link.provider}: <span className="text-gray-600 lowercase font-mono">{link.url}</span></p>
-                          </div>
-                       </div>
-                       <div className="flex items-center gap-2 shrink-0">
-                          <button onClick={() => toggleRotationLink(link.id)} className={`p-2 transition-colors ${link.isEnabled ? 'text-blue-500' : 'text-gray-700'}`}>
-                             {link.isEnabled ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
-                          </button>
-                          <button onClick={() => removeRotationLink(link.id)} className="p-2 text-gray-600 hover:text-red-500 transition-colors">
-                             <Trash2 size={16} />
-                          </button>
-                       </div>
-                    </div>
-                  ))
-                )}
-             </div>
           </div>
-        </div>
-      </div>
-      
-      <div className="bg-blue-600/5 p-8 rounded-[3rem] border border-blue-500/10 text-center">
-         <p className="text-gray-600 text-[9px] font-black uppercase tracking-widest leading-relaxed">
-            Infrastructure safety: Ad rotation ensures high CPM by bypassing single-link saturation. <br/>
-            Rotation protocols update every {settings.rotation?.intervalMinutes} minutes based on node traffic.
-         </p>
       </div>
     </div>
   );

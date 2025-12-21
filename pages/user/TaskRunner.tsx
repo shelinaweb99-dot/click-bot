@@ -39,7 +39,6 @@ export const TaskRunner: React.FC = () => {
       interval = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
     } else if (timeLeft === 0 && isTimerRunning) {
         setIsTimerRunning(false);
-        // AUTOMATIC RETURN:
         setShowViewer(false); 
         handleVerify(); 
     }
@@ -114,7 +113,6 @@ export const TaskRunner: React.FC = () => {
         <ArrowLeft size={14} /> Back to Dashboard
       </button>
 
-      {/* Task Info Header */}
       <div className="bg-[#1e293b] p-6 rounded-[2rem] border border-white/5 shadow-2xl flex items-center justify-between">
           <div className="min-w-0 pr-4">
             <h2 className="text-xs font-black text-white line-clamp-1 uppercase tracking-tight">{task.title}</h2>
@@ -126,9 +124,7 @@ export const TaskRunner: React.FC = () => {
           </div>
       </div>
 
-      {/* Main Action Area */}
       <div className="bg-[#0b1120] rounded-[2.5rem] border border-white/5 flex-1 flex flex-col items-center justify-center p-8 sm:p-12 text-center relative overflow-hidden shadow-inner min-h-[450px]">
-          
           <div className="space-y-8 max-w-xs w-full animate-in fade-in zoom-in duration-300">
               <div className="bg-blue-500/10 p-8 sm:p-10 rounded-full border border-blue-500/20 mx-auto w-fit shadow-lg">
                   {task.type === TaskType.WEBSITE ? <Globe size={56} className="text-blue-500" /> : 
@@ -164,7 +160,7 @@ export const TaskRunner: React.FC = () => {
                       <div className="flex flex-col gap-3">
                         <p className="text-blue-500 font-black text-[9px] uppercase tracking-[0.2em] animate-pulse">Monitoring Activity...</p>
                         <button onClick={() => setShowViewer(true)} className="bg-white/5 text-white/50 py-3 rounded-2xl text-[9px] uppercase font-black tracking-widest hover:bg-white/10 transition-all border border-white/5">
-                            Re-Open Mission Window
+                            Re-Open Window
                         </button>
                       </div>
                   </div>
@@ -177,13 +173,8 @@ export const TaskRunner: React.FC = () => {
                   </button>
               )}
           </div>
-
-          <div className="mt-12 flex items-center gap-2 text-gray-700 text-[8px] font-black uppercase tracking-[0.3em]">
-             <ShieldAlert size={12} /> Encrypted Verification
-          </div>
       </div>
 
-      {/* In-App Mission Viewer Overlay */}
       {showViewer && task.url && (
           <div className="fixed inset-0 z-[70] bg-black flex flex-col animate-in fade-in duration-300">
               <div className="bg-[#1e293b] p-4 flex justify-between items-center border-b border-white/5">
@@ -196,30 +187,19 @@ export const TaskRunner: React.FC = () => {
                         {timeLeft > 0 && <p className="text-blue-400 text-[9px] font-bold">{timeLeft}s remaining</p>}
                       </div>
                   </div>
-                  {/* CLOSE BUTTON REMOVED PER USER REQUEST TO MAKE IT AUTOMATIC */}
               </div>
               <div className="flex-1 bg-white relative">
-                  <div className="absolute inset-0 flex flex-col items-center justify-center p-10 text-center -z-10 bg-gray-900">
-                      <Info className="text-gray-600 mb-4" size={48} />
-                      <p className="text-gray-400 text-sm font-medium">Mission loading...</p>
-                      <p className="text-gray-600 text-[10px] mt-2 max-w-xs">If the content doesn't appear, try re-opening the window or ensuring you have a stable connection.</p>
-                  </div>
-                  <iframe 
-                    src={task.url} 
-                    className="w-full h-full border-none bg-white relative z-10"
-                    title="Mission Content"
-                    allow="autoplay; encrypted-media; fullscreen"
-                  />
-              </div>
-              <div className="bg-[#1e293b] p-3 text-center border-t border-white/5">
-                  <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">
-                      Please wait. The window will close automatically when the timer reaches 0.
-                  </p>
+                  <iframe src={task.url} className="w-full h-full border-none bg-white relative z-10" allow="autoplay; encrypted-media; fullscreen" />
               </div>
           </div>
       )}
 
-      <AdSimulator isOpen={showAd} onComplete={handleAdComplete} settings={adSettings} />
+      <AdSimulator 
+        isOpen={showAd} 
+        onComplete={handleAdComplete} 
+        settings={adSettings} 
+        type="REWARDED_INTERSTITIAL"
+      />
     </div>
   );
 };
