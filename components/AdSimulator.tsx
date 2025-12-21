@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, ShieldAlert, X, AlertCircle } from 'lucide-react';
+import { Loader2, ShieldAlert, X, AlertCircle, ExternalLink } from 'lucide-react';
 import { AdSettings, MonetagAdType } from '../types';
+import { getRotatedLink } from '../services/mockDb';
 
 interface AdSimulatorProps {
   onComplete: () => void;
@@ -10,7 +11,6 @@ interface AdSimulatorProps {
   type?: MonetagAdType;
 }
 
-// Exported to allow access from admin settings
 export const DEFAULT_MONETAG_SCRIPT = 'https://alwingulla.com/script/suv4.js';
 
 export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, settings, type = 'REWARDED_INTERSTITIAL' }) => {
@@ -19,18 +19,31 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
   const pollingInterval = useRef<any>(null);
   const timeoutRef = useRef<any>(null);
 
-  useEffect(() => {
-    if (!isOpen) {
-        setStatus('IDLE');
-        if (pollingInterval.current) clearInterval(pollingInterval.current);
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        return;
-    }
-
+  const startAdProcess = async () => {
     setStatus('LOADING');
     setErrorMsg('');
 
-    // 1. Determine Zone ID
+    // --- MODE 1: DYNAMIC / DIRECT LINK ---
+    if (type === 'DIRECT' || (!settings.monetagZoneId && !settings.monetagRewardedInterstitialId && type !== 'INTERSTITIAL')) {
+        try {
+            const link = await getRotatedLink();
+            if (link) {
+                window.open(link, '_blank');
+                setStatus('SHOWING');
+                // Auto-complete after 10s for direct links as we can't track them
+                timeoutRef.current = setTimeout(onComplete, 10000);
+            } else {
+                throw new Error("No dynamic link configured.");
+            }
+        } catch (e: any) {
+            setStatus('ERROR');
+            setErrorMsg(e.message || 'Direct link failure.');
+            setTimeout(onComplete, 2000);
+        }
+        return;
+    }
+
+    // --- MODE 2: TELEGRAM SDK (ZONE ID) ---
     let zoneId = '';
     switch(type) {
         case 'REWARDED_INTERSTITIAL': zoneId = settings.monetagRewardedInterstitialId || ''; break;
@@ -39,18 +52,16 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
         default: zoneId = settings.monetagZoneId || '';
     }
 
-    // 2. Fallback to general zone if specific is missing
     if (!zoneId) zoneId = settings.monetagZoneId || '';
 
     if (!zoneId) {
         setStatus('ERROR');
-        setErrorMsg('Ad Zone ID not configured in Admin Panel.');
-        // Auto-complete if no ad is configured so user isn't stuck
+        setErrorMsg('Ad Zone ID not found.');
         setTimeout(onComplete, 2000);
         return;
     }
 
-    // 3. Inject Script
+    // Inject/Ensure Script
     const scriptId = `monetag-sdk-${zoneId}`;
     if (!document.getElementById(scriptId)) {
         const script = document.createElement('script');
@@ -58,12 +69,12 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
         script.src = settings.monetagAdTag || DEFAULT_MONETAG_SCRIPT;
         script.async = true;
         script.dataset.zone = zoneId;
-        document.head.appendChild(script);
+        // Fix: Ensure the script is actually added to the body/head
+        document.body.appendChild(script);
     }
 
-    // 4. Poll for SDK function and Auto-Trigger
     let attempts = 0;
-    const maxAttempts = 50; // ~5 seconds
+    const maxAttempts = 60; // 6 seconds
     pollingInterval.current = setInterval(() => {
         attempts++;
         const funcName = `show_${zoneId}`;
@@ -73,36 +84,41 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
             try {
                 (window as any)[funcName]();
                 setStatus('SHOWING');
-                
-                // Monetag SDKs in Telegram often take over the UI. 
-                // We provide a fallback timer to credit points if we can't detect closure.
-                timeoutRef.current = setTimeout(() => {
-                    onComplete();
-                }, 15000); // 15s standard wait
+                // Safety timer to credit points if SDK doesn't callback
+                timeoutRef.current = setTimeout(onComplete, 20000); 
             } catch (e) {
                 setStatus('ERROR');
-                setErrorMsg('Failed to trigger Ad SDK.');
+                setErrorMsg('SDK Execution Error.');
                 setTimeout(onComplete, 2000);
             }
         } else if (attempts >= maxAttempts) {
             clearInterval(pollingInterval.current);
             setStatus('ERROR');
-            setErrorMsg('Ad SDK failed to load. Skipping...');
-            setTimeout(onComplete, 2000);
+            setErrorMsg('SDK Timeout. Points will be credited.');
+            setTimeout(onComplete, 2500); // Fail gracefully but credit user
         }
     }, 100);
+  };
 
+  useEffect(() => {
+    if (!isOpen) {
+        setStatus('IDLE');
+        if (pollingInterval.current) clearInterval(pollingInterval.current);
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        return;
+    }
+    startAdProcess();
     return () => {
         if (pollingInterval.current) clearInterval(pollingInterval.current);
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [isOpen, settings, type, onComplete]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in">
-      <div className="bg-gray-900 w-full max-w-sm rounded-[2.5rem] border border-white/5 shadow-2xl overflow-hidden p-8 text-center">
+      <div className="bg-gray-900 w-full max-w-sm rounded-[2.5rem] border border-white/5 shadow-2xl overflow-hidden p-8 text-center relative">
           
           {status === 'LOADING' && (
               <div className="space-y-6">
@@ -112,7 +128,7 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
                   </div>
                   <div>
                     <h3 className="text-white font-black text-xs uppercase tracking-[0.2em]">Initializing Ad</h3>
-                    <p className="text-gray-500 text-[9px] mt-2 uppercase font-bold tracking-widest">Securing Monetag Connection...</p>
+                    <p className="text-gray-500 text-[9px] mt-2 uppercase font-bold tracking-widest">Bridging Monetag Network...</p>
                   </div>
               </div>
           )}
@@ -123,35 +139,36 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
                       <ShieldAlert className="text-blue-500" size={32} />
                   </div>
                   <div>
-                    <h3 className="text-white font-black text-sm uppercase tracking-widest">Ad in Progress</h3>
-                    <p className="text-gray-500 text-[10px] mt-2 font-medium">Please wait while the ad completes to receive your reward.</p>
+                    <h3 className="text-white font-black text-sm uppercase tracking-widest">Ad Active</h3>
+                    <p className="text-gray-500 text-[10px] mt-2 font-medium">Please view the content to unlock your reward.</p>
                   </div>
-                  <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-600 animate-[shimmer_2s_infinite] w-full"></div>
-                  </div>
+                  {type === 'DIRECT' && (
+                      <p className="text-blue-400 text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1">
+                          <ExternalLink size={10} /> Check New Window
+                      </p>
+                  )}
               </div>
           )}
 
           {status === 'ERROR' && (
               <div className="space-y-4">
-                  <AlertCircle className="text-red-500 mx-auto" size={40} />
-                  <p className="text-red-400 text-[10px] font-black uppercase tracking-widest">{errorMsg}</p>
+                  <div className="bg-red-500/10 p-4 rounded-full w-fit mx-auto border border-red-500/20">
+                    <AlertCircle className="text-red-500" size={32} />
+                  </div>
+                  <p className="text-red-400 text-[10px] font-black uppercase tracking-widest leading-relaxed">
+                    {errorMsg}<br/>
+                    <span className="text-gray-600">Auto-skipping to prevent hang...</span>
+                  </p>
               </div>
           )}
 
           <button 
             onClick={onComplete}
-            className="mt-8 text-gray-700 hover:text-gray-500 text-[9px] font-black uppercase tracking-[0.3em] transition-colors"
+            className="mt-8 text-gray-700 hover:text-gray-400 text-[9px] font-black uppercase tracking-[0.3em] transition-colors"
           >
-              Skip & Continue
+              Close & Continue
           </button>
       </div>
-      <style>{`
-        @keyframes shimmer {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
-        }
-      `}</style>
     </div>
   );
 };
