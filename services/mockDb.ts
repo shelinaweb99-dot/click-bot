@@ -141,8 +141,8 @@ export const createWithdrawal = async (req: WithdrawalRequest) => {
 // USER SPECIFIC WITHDRAWALS
 export const getWithdrawals = async (): Promise<WithdrawalRequest[]> => apiCall('getWithdrawals', {}, true);
 
-// ADMIN SPECIFIC WITHDRAWALS
-export const adminGetWithdrawals = async (): Promise<WithdrawalRequest[]> => apiCall('adminGetWithdrawals', {}, true);
+// ADMIN SPECIFIC WITHDRAWALS (Disabled Cache for Real-time management)
+export const adminGetWithdrawals = async (): Promise<WithdrawalRequest[]> => apiCall('adminGetWithdrawals', {}, false);
 
 export const updateWithdrawalStatus = async (id: string, status: string) => {
     const res = await apiCall('updateWithdrawal', { id, status });
@@ -227,11 +227,8 @@ export const getPaymentMethods = async (): Promise<WithdrawalMethod[]> => {
     try {
         const data = await apiCall('getSettings', { key: 'payment_methods' }, true);
         if (!data) return [];
-        // Handle direct array response
         if (Array.isArray(data)) return data;
-        // Handle wrapped object response
         if (data.methods && Array.isArray(data.methods)) return data.methods;
-        // Check if data is an object but empty or irrelevant
         return [];
     } catch (e) {
         console.warn("Could not fetch payment methods:", e);

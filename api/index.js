@@ -15,7 +15,7 @@ async function connectToDatabase() {
     try {
         mongoose.set('strictQuery', true);
         const opts = {
-            serverSelectionTimeoutMS: 20000, // 20s
+            serverSelectionTimeoutMS: 20000,
             socketTimeoutMS: 60000, 
             connectTimeoutMS: 20000,
             maxPoolSize: 10,
@@ -172,8 +172,8 @@ export default async function handler(req, res) {
         }
 
         const currentUser = await authenticateUser(req);
-        if (!currentUser) return res.status(401).json({ message: "Session expired. Please re-authenticate." });
-        if (currentUser.blocked) return res.status(403).json({ message: "Access restricted by system administrator." });
+        if (!currentUser) return res.status(401).json({ message: "Session expired." });
+        if (currentUser.blocked) return res.status(403).json({ message: "Access restricted." });
 
         switch (action) {
             case 'getUser': return res.json(currentUser);
@@ -190,12 +190,13 @@ export default async function handler(req, res) {
                 return res.json(await Withdrawal.find({ userId: currentUser.id }).sort({ date: -1 }).lean());
 
             case 'getAllUsers':
-                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Access Denied." });
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
                 return res.json(await User.find({}).limit(500).lean());
             
             case 'adminGetWithdrawals':
-                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Access Denied." });
-                return res.json(await Withdrawal.find({}).sort({ date: -1 }).lean());
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
+                const allWithdrawals = await Withdrawal.find({}).sort({ date: -1 }).lean();
+                return res.json(allWithdrawals);
 
             case 'updateWithdrawal': {
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
@@ -252,7 +253,6 @@ export default async function handler(req, res) {
 
             case 'createWithdrawal': {
                 const { request } = data;
-                // Re-fetch user to get current balance accurately
                 const user = await User.findOne({ id: currentUser.id });
                 if (user.balance < request.amount) return res.status(400).json({ message: "Insufficient balance." });
                 

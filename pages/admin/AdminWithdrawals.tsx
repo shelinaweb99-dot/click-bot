@@ -16,11 +16,12 @@ export const AdminWithdrawals: React.FC = () => {
           setError(null);
           const data = await adminGetWithdrawals();
           if (isMounted.current) {
-            setWithdrawals(Array.isArray(data) ? [...data].reverse() : []);
+            // Data is already sorted by backend, we just ensure it's an array
+            setWithdrawals(Array.isArray(data) ? data : []);
           }
       } catch (e: any) {
           console.error("Failed to load withdrawals", e);
-          if (isMounted.current) setError("Network error fetching payout logs.");
+          if (isMounted.current) setError(e.message || "Access denied or database connection lost.");
       } finally {
           if (isMounted.current) setLoading(false);
       }
@@ -56,9 +57,9 @@ export const AdminWithdrawals: React.FC = () => {
               }
           }
           loadData();
-      } catch (e) {
+      } catch (e: any) {
           console.error("Action failed", e);
-          alert("Platform synchronization error. User balance preserved.");
+          alert(e.message || "Platform synchronization error. User balance preserved.");
       }
   };
 
@@ -77,8 +78,8 @@ export const AdminWithdrawals: React.FC = () => {
         <AlertCircle className="text-red-500 mb-4" size={48} />
         <h2 className="text-xl font-black text-white">System Error</h2>
         <p className="text-gray-500 text-sm mt-2 mb-6">{error}</p>
-        <button onClick={loadData} className="bg-red-500 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2">
-          <RefreshCw size={16} /> Retry Sync
+        <button onClick={loadData} className="bg-red-500 hover:bg-red-600 text-white px-8 py-3 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 transition-all active:scale-95">
+          <RefreshCw size={16} /> Re-Authenticate Sync
         </button>
       </div>
     );
