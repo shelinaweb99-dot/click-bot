@@ -1,29 +1,33 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Loader2, CheckCircle2, PlayCircle, AlertCircle, X, ExternalLink, MousePointerClick, ShieldAlert, RefreshCw } from 'lucide-react';
-import { AdProvider, AdSettings } from '../types';
+import { AdProvider, AdSettings, MonetagAdType } from '../types';
 import { getRotatedLink, initiateAdWatch } from '../services/mockDb';
 
 interface AdSimulatorProps {
   onComplete: () => void;
   isOpen: boolean;
   settings: AdSettings;
+  type?: MonetagAdType;
 }
 
 const DEFAULT_MONETAG_SCRIPT = 'https://alwingulla.com/script/suv4.js';
 
-export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, settings }) => {
+export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, settings, type = 'REWARDED_INTERSTITIAL' }) => {
   const [viewState, setViewState] = useState<'LOADING' | 'READY' | 'WATCHING' | 'COMPLETED' | 'ERROR'>('LOADING');
   const [errorMsg, setErrorMsg] = useState('');
   const [countdown, setCountdown] = useState(15);
   const [currentFallbackLink, setCurrentFallbackLink] = useState('');
   const [activeZoneId, setActiveZoneId] = useState<string>('');
   
+  const pollingInterval = useRef<any>(null);
   const watchTimer = useRef<any>(null);
 
+  // --- 1. SETUP & SCRIPT INJECTION ---
   useEffect(() => {
     if (!isOpen) {
         setViewState('LOADING');
+        if (pollingInterval.current) clearInterval(pollingInterval.current);
         if (watchTimer.current) clearInterval(watchTimer.current);
         return;
     }
@@ -32,15 +36,27 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
     setErrorMsg('');
     setCountdown(15);
 
-    const zoneId = settings.monetagZoneId || '';
+    // Determine which zone to trigger based on requested type
+    let zoneId = '';
+    switch(type) {
+        case 'REWARDED_INTERSTITIAL': zoneId = settings.monetagRewardedInterstitialId || ''; break;
+        case 'REWARDED_POPUP': zoneId = settings.monetagRewardedPopupId || ''; break;
+        case 'INTERSTITIAL': zoneId = settings.monetagInterstitialId || ''; break;
+        default: zoneId = settings.monetagZoneId || '';
+    }
+    
+    // Fallback if specific is missing
+    if (!zoneId) zoneId = settings.monetagZoneId || '';
     setActiveZoneId(zoneId);
 
+    // Get fallback links
     getRotatedLink().then(link => {
         if (link) setCurrentFallbackLink(link);
         else setCurrentFallbackLink(settings.monetagDirectLink || settings.adsterraLink || '');
     });
 
     if (zoneId) {
+        // Inject script for the zone if not already present
         const scriptId = `monetag-sdk-${zoneId}`;
         if (!document.getElementById(scriptId)) {
             const script = document.createElement('script');
@@ -50,16 +66,30 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
             script.dataset.zone = zoneId;
             document.head.appendChild(script);
         }
+        
+        // Poll for function availability (Monetag SDK creates window.show_ZONEID)
+        let attempts = 0;
+        const maxAttempts = 30; // 3 seconds
+        pollingInterval.current = setInterval(() => {
+            attempts++;
+            const funcName = `show_${zoneId}`;
+            if (typeof (window as any)[funcName] === 'function') {
+                clearInterval(pollingInterval.current);
+                setViewState('READY');
+            } else if (attempts >= maxAttempts) {
+                clearInterval(pollingInterval.current);
+                setViewState('READY'); // Show manual trigger as fallback
+            }
+        }, 100);
+    } else {
+        setViewState('READY');
     }
 
-    // Give a moment for scripts to initialize
-    const timer = setTimeout(() => {
-        setViewState('READY');
-    }, 1000);
+    return () => {
+        if (pollingInterval.current) clearInterval(pollingInterval.current);
+    };
 
-    return () => clearTimeout(timer);
-
-  }, [isOpen, settings]);
+  }, [isOpen, settings, type]);
 
   const handleShowAd = async () => {
       try {
@@ -107,6 +137,10 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
 
   const handleManualOpen = () => {
       if (currentFallbackLink) window.open(currentFallbackLink, '_blank');
+      else if (activeZoneId) {
+          const funcName = `show_${activeZoneId}`;
+          if (typeof (window as any)[funcName] === 'function') (window as any)[funcName]();
+      }
   };
 
   if (!isOpen) return null;
@@ -145,7 +179,7 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
                       <div>
                           <h2 className="text-2xl font-black text-white tracking-tighter uppercase">AD READY</h2>
                           <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest mt-2 leading-relaxed">
-                            Complete the verification <br/> to secure your session.
+                            Complete the {type.replace('_', ' ')} <br/> to secure your session.
                           </p>
                       </div>
                       <button 
@@ -154,6 +188,7 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
                       >
                           Watch Now
                       </button>
+                      {activeZoneId && <p className="text-[8px] text-gray-700 font-mono">Zone: {activeZoneId}</p>}
                   </div>
               )}
 

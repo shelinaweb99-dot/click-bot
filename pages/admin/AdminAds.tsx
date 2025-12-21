@@ -40,6 +40,9 @@ export const AdminAds: React.FC = () => {
     monetagDirectLink: '',
     monetagAdTag: '',
     monetagZoneId: '',
+    monetagRewardedInterstitialId: '',
+    monetagRewardedPopupId: '',
+    monetagInterstitialId: '',
     adsterraLink: '',
     rotation: defaultRotation
   };
@@ -164,32 +167,57 @@ export const AdminAds: React.FC = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Telegram Ads IDs */}
+        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl space-y-8">
+          <div className="flex items-center gap-3">
+             <div className="bg-indigo-500/10 p-2 rounded-lg text-indigo-500 border border-indigo-500/10">
+                <Layout size={20} />
+             </div>
+             <h2 className="text-xl font-black text-white tracking-tight uppercase">Telegram SDK Ads</h2>
+          </div>
+
+          <div className="space-y-6">
+             <div className="space-y-4">
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Rewarded Interstitial Zone ID</label>
+                <input 
+                   type="text" 
+                   className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
+                   placeholder="e.g. 8621458"
+                   value={settings.monetagRewardedInterstitialId || ''}
+                   onChange={e => setSettings({ ...settings, monetagRewardedInterstitialId: e.target.value })}
+                />
+             </div>
+             <div className="space-y-4">
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Rewarded Popup Zone ID</label>
+                <input 
+                   type="text" 
+                   className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
+                   placeholder="e.g. 8621459"
+                   value={settings.monetagRewardedPopupId || ''}
+                   onChange={e => setSettings({ ...settings, monetagRewardedPopupId: e.target.value })}
+                />
+             </div>
+             <div className="space-y-4">
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">In-App Interstitial Zone ID</label>
+                <input 
+                   type="text" 
+                   className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
+                   placeholder="e.g. 8621460"
+                   value={settings.monetagInterstitialId || ''}
+                   onChange={e => setSettings({ ...settings, monetagInterstitialId: e.target.value })}
+                />
+             </div>
+          </div>
+        </div>
+
+        {/* Legacy Monetag / Adsterra Settings */}
         <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl space-y-8">
           <div className="flex items-center gap-3">
              <div className="bg-yellow-500/10 p-2 rounded-lg text-yellow-500 border border-yellow-500/10">
                 <Zap size={20} />
              </div>
              <h2 className="text-xl font-black text-white tracking-tight uppercase">Legacy & Fallback</h2>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {[
-              { id: AdProvider.MONETAG, label: 'Monetag', color: 'bg-indigo-600' },
-              { id: AdProvider.ADSTERRA, label: 'Adsterra', color: 'bg-emerald-600' },
-            ].map(prov => (
-              <button
-                key={prov.id}
-                onClick={() => setSettings({ ...settings, activeProvider: prov.id })}
-                className={`p-5 rounded-2xl border transition-all font-black text-[10px] uppercase tracking-widest text-center ${
-                  settings.activeProvider === prov.id 
-                  ? `${prov.color} border-white/20 text-white shadow-lg` 
-                  : 'bg-[#0b1120] border-white/5 text-gray-500 hover:text-white'
-                }`}
-              >
-                {prov.label}
-              </button>
-            ))}
           </div>
 
           <div className="space-y-6 pt-4">
@@ -229,6 +257,7 @@ export const AdminAds: React.FC = () => {
         </div>
       </div>
       
+      {/* Rotation Engine */}
       <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
           <div className="flex justify-between items-center mb-8">
             <h2 className="text-xl font-black text-white tracking-tight uppercase flex items-center gap-3">
@@ -242,11 +271,11 @@ export const AdminAds: React.FC = () => {
             </button>
           </div>
           
-          <div className="bg-[#0b1120] p-6 rounded-[2rem] border border-white/5 space-y-4">
+          <div className="bg-[#0b1120] p-6 rounded-[2rem] border border-white/5 space-y-6">
                 <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Add Dynamic Link</h4>
                 <div className="flex gap-2">
                    <select 
-                      className="bg-gray-900 text-white px-3 py-1 rounded-xl text-[10px] font-black uppercase outline-none"
+                      className="bg-gray-900 text-white px-3 py-1 rounded-xl text-[10px] font-black uppercase outline-none border border-white/5"
                       value={newLinkProvider}
                       onChange={e => setNewLinkProvider(e.target.value as any)}
                    >
@@ -266,6 +295,41 @@ export const AdminAds: React.FC = () => {
                    >
                       <Plus size={20} />
                    </button>
+                </div>
+
+                {/* --- THIS WAS MISSING: The list of added links --- */}
+                <div className="space-y-3 mt-8">
+                   {settings.rotation?.links.length === 0 ? (
+                      <p className="text-center text-gray-600 text-[10px] font-bold uppercase italic py-4">No rotation links added yet.</p>
+                   ) : (
+                      settings.rotation?.links.map(link => (
+                         <div key={link.id} className="bg-black/40 p-4 rounded-2xl flex items-center justify-between border border-white/5 group transition-all hover:border-blue-500/30">
+                            <div className="flex items-center gap-3 min-w-0">
+                               <div className={`p-2 rounded-lg text-[8px] font-black uppercase ${link.provider === 'MONETAG' ? 'bg-indigo-600/20 text-indigo-400' : 'bg-emerald-600/20 text-emerald-400'}`}>
+                                  {link.provider.substring(0, 1)}
+                               </div>
+                               <div className="min-w-0">
+                                  <p className="text-white text-[10px] font-bold truncate pr-4">{link.url}</p>
+                                  <p className="text-[8px] text-gray-600 font-black uppercase tracking-widest">{link.provider}</p>
+                               </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                               <button 
+                                 onClick={() => toggleRotationLink(link.id)}
+                                 className={`p-2 rounded-xl transition-colors ${link.isEnabled ? 'text-green-500' : 'text-gray-600'}`}
+                               >
+                                  {link.isEnabled ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+                               </button>
+                               <button 
+                                 onClick={() => removeRotationLink(link.id)}
+                                 className="p-2 text-gray-600 hover:text-red-500 transition-colors"
+                               >
+                                  <Trash2 size={16} />
+                               </button>
+                            </div>
+                         </div>
+                      ))
+                   )}
                 </div>
           </div>
       </div>
