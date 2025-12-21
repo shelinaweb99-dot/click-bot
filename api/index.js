@@ -46,7 +46,6 @@ const UserSchema = new mongoose.Schema({
     referredBy: String,
     referralCount: { type: Number, default: 0 },
     referralEarnings: { type: Number, default: 0 },
-    // Advanced Tracking
     shortsData: {
         lastWatched: { type: Map, of: String, default: {} },
         watchedTodayCount: { type: Number, default: 0 },
@@ -59,7 +58,11 @@ const TaskSchema = new mongoose.Schema({
     title: String,
     reward: Number,
     type: String,
-    status: { type: String, default: 'ACTIVE' }
+    url: String,
+    status: { type: String, default: 'ACTIVE' },
+    completedCount: { type: Number, default: 0 },
+    totalLimit: { type: Number, default: 100 },
+    durationSeconds: { type: Number, default: 30 }
 }, { strict: false });
 
 const TransactionSchema = new mongoose.Schema({
@@ -84,8 +87,24 @@ const ShortSchema = new mongoose.Schema({
     addedAt: String
 }, { strict: false });
 
-const WithdrawalSchema = new mongoose.Schema({ id: String }, { strict: false });
-const Announcement = new mongoose.Schema({ id: String }, { strict: false });
+const WithdrawalSchema = new mongoose.Schema({
+    id: { type: String, required: true, unique: true },
+    userId: { type: String, index: true },
+    userName: String,
+    method: String,
+    amount: Number,
+    details: String,
+    status: { type: String, default: 'PENDING' },
+    date: String
+}, { strict: false });
+
+const AnnouncementSchema = new mongoose.Schema({
+    id: { type: String, required: true, unique: true },
+    title: String,
+    message: String,
+    type: String,
+    date: String
+}, { strict: false });
 
 const User = mongoose.models.User || mongoose.model('User', UserSchema);
 const Task = mongoose.models.Task || mongoose.model('Task', TaskSchema);
@@ -93,6 +112,7 @@ const Transaction = mongoose.models.Transaction || mongoose.model('Transaction',
 const Setting = mongoose.models.Setting || mongoose.model('Setting', SettingSchema);
 const Short = mongoose.models.Short || mongoose.model('Short', ShortSchema);
 const Withdrawal = mongoose.models.Withdrawal || mongoose.model('Withdrawal', WithdrawalSchema);
+const Announcement = mongoose.models.Announcement || mongoose.model('Announcement', AnnouncementSchema);
 
 async function authenticateUser(req) {
     const authHeader = req.headers.authorization;
@@ -159,54 +179,168 @@ export default async function handler(req, res) {
                 return res.json(doc?.data || {});
             }
 
+            // --- ADMIN ACTIONS ---
+            case 'getAllUsers':
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
+                return res.json(await User.find({}));
+            
+            case 'getAllWithdrawals':
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
+                return res.json(await Withdrawal.find({}));
+
+            case 'updateWithdrawal': {
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
+                const { id, status } = data;
+                const withdrawal = await Withdrawal.findOne({ id });
+                if (!withdrawal) return res.status(404).json({ message: "Request not found" });
+                
+                // Refund if rejected
+                if (status === 'REJECTED' && withdrawal.status === 'PENDING') {
+                    await User.updateOne({ id: withdrawal.userId }, { $inc: { balance: withdrawal.amount } });
+                    await Transaction.create({
+                        id: 'tx_rf_' + Date.now(),
+                        userId: withdrawal.userId,
+                        amount: withdrawal.amount,
+                        type: 'BONUS',
+                        description: `Refund: Withdrawal #${id}`,
+                        date: new Date().toISOString()
+                    });
+                }
+                
+                withdrawal.status = status;
+                await withdrawal.save();
+                return res.json({ success: true });
+            }
+
+            case 'saveTask': {
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
+                const taskData = data.payload;
+                await Task.findOneAndUpdate({ id: taskData.id }, taskData, { upsert: true });
+                return res.json({ success: true });
+            }
+
+            case 'deleteTask':
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
+                await Task.deleteOne({ id: data.id });
+                return res.json({ success: true });
+
+            case 'getAnnouncements':
+                return res.json(await Announcement.find({}).sort({ date: -1 }));
+
+            case 'addAnnouncement':
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
+                await Announcement.create(data.payload);
+                return res.json({ success: true });
+
+            case 'deleteAnnouncement':
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
+                await Announcement.deleteOne({ id: data.id });
+                return res.json({ success: true });
+
+            case 'saveUser':
+                if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
+                await User.findOneAndUpdate({ id: data.user.id }, data.user);
+                return res.json({ success: true });
+
+            // --- USER ACTIONS ---
+            case 'createWithdrawal': {
+                const { request } = data;
+                if (currentUser.balance < request.amount) return res.status(400).json({ message: "Insufficient balance" });
+                
+                currentUser.balance -= request.amount;
+                await currentUser.save();
+                
+                await Withdrawal.create({
+                    ...request,
+                    userId: currentUser.id,
+                    userName: currentUser.name,
+                    status: 'PENDING'
+                });
+                
+                await Transaction.create({
+                    id: 'tx_w_' + Date.now(),
+                    userId: currentUser.id,
+                    amount: request.amount,
+                    type: 'WITHDRAWAL',
+                    description: `Withdrawal via ${request.method}`,
+                    date: new Date().toISOString()
+                });
+                
+                return res.json({ success: true });
+            }
+
+            case 'completeTask': {
+                const { taskId } = data;
+                const task = await Task.findOne({ id: taskId });
+                if (!task) return res.status(404).json({ message: "Task not found" });
+
+                currentUser.balance += task.reward;
+                await currentUser.save();
+
+                await Transaction.create({
+                    id: 'tx_t_' + Date.now(),
+                    userId: currentUser.id,
+                    taskId: task.id,
+                    amount: task.reward,
+                    type: 'EARNING',
+                    description: `Task Completed: ${task.title}`,
+                    date: new Date().toISOString()
+                });
+
+                return res.json({ success: true, reward: task.reward });
+            }
+
+            case 'processReferral': {
+                const { userId, code } = data;
+                if (currentUser.referredBy) return res.status(400).json({ message: "Already referred" });
+                if (code === currentUser.id) return res.status(400).json({ message: "Cannot refer yourself" });
+                
+                const referrer = await User.findOne({ id: code });
+                if (!referrer) return res.status(404).json({ message: "Referrer not found" });
+
+                // Update Referrer
+                referrer.balance += 25;
+                referrer.referralCount += 1;
+                referrer.referralEarnings += 25;
+                await referrer.save();
+
+                // Update Current User
+                currentUser.balance += 10;
+                currentUser.referredBy = code;
+                await currentUser.save();
+
+                // Create Transactions
+                await Transaction.create({ id: 'tx_r1_' + Date.now(), userId: referrer.id, amount: 25, type: 'REFERRAL', description: `Referral Bonus: ${currentUser.name}`, date: new Date().toISOString() });
+                await Transaction.create({ id: 'tx_r2_' + Date.now(), userId: currentUser.id, amount: 10, type: 'BONUS', description: `Referral Join Bonus`, date: new Date().toISOString() });
+
+                return res.json({ success: true, message: "Referral bonus applied!" });
+            }
+
             case 'completeShort': {
                 const videoId = data.videoId;
                 if (!videoId) return res.status(400).json({ message: "Video ID missing" });
-
                 const now = new Date();
                 const todayStr = now.toISOString().split('T')[0];
-                
-                // Initialize shortsData if missing
-                if (!currentUser.shortsData) {
-                    currentUser.shortsData = { lastWatched: new Map(), watchedTodayCount: 0, lastResetDate: todayStr };
-                }
-
-                // Check 24 hour cooldown
+                if (!currentUser.shortsData) currentUser.shortsData = { lastWatched: new Map(), watchedTodayCount: 0, lastResetDate: todayStr };
                 const lastWatchedStr = currentUser.shortsData.lastWatched.get(videoId);
                 if (lastWatchedStr) {
                     const lastWatched = new Date(lastWatchedStr);
                     const diffHours = (now.getTime() - lastWatched.getTime()) / (1000 * 60 * 60);
-                    if (diffHours < 24) return res.status(400).json({ message: "Video cooldown active (24h)" });
+                    if (diffHours < 24) return res.status(400).json({ message: "Cooldown active (24h)" });
                 }
-
-                // Reset daily counter if new day
                 if (currentUser.shortsData.lastResetDate !== todayStr) {
                     currentUser.shortsData.watchedTodayCount = 0;
                     currentUser.shortsData.lastResetDate = todayStr;
                 }
-
                 const sDoc = await Setting.findById('shorts').lean();
                 const reward = Number(sDoc?.data?.pointsPerVideo) || 10;
-
-                // Update User
                 currentUser.balance += reward;
                 currentUser.shortsData.lastWatched.set(videoId, now.toISOString());
                 currentUser.shortsData.watchedTodayCount += 1;
-                
-                // Use markModified for Map updates in Mongoose
                 currentUser.markModified('shortsData.lastWatched');
                 currentUser.markModified('shortsData');
                 await currentUser.save();
-
-                await Transaction.create({
-                    id: 'tx_s_' + Date.now(),
-                    userId: currentUser.id,
-                    amount: reward,
-                    type: 'SHORTS',
-                    description: `Shorts Reward: ${videoId}`,
-                    date: now.toISOString()
-                });
-
+                await Transaction.create({ id: 'tx_s_' + Date.now(), userId: currentUser.id, amount: reward, type: 'SHORTS', description: `Shorts Reward: ${videoId}`, date: now.toISOString() });
                 return res.json({ success: true, reward, watchedToday: currentUser.shortsData.watchedTodayCount });
             }
 
@@ -231,10 +365,10 @@ export default async function handler(req, res) {
                 await Short.create({ id: 'v_' + Date.now(), youtubeId: vId, url: data.url, addedAt: new Date().toISOString() });
                 return res.json({ success: true });
 
-            default: return res.status(400).json({ message: "Unknown action" });
+            default: return res.status(400).json({ message: "Unknown action: " + action });
         }
     } catch (e) {
         console.error("Handler Error", e);
-        return res.status(500).json({ message: "Server sync lost." });
+        return res.status(500).json({ message: "Server sync lost: " + e.message });
     }
 }
