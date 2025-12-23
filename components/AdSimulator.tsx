@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, ShieldAlert, AlertCircle, RefreshCw, ExternalLink } from 'lucide-react';
+import { Loader2, ShieldAlert, AlertCircle, RefreshCw, ExternalLink, MousePointer2 } from 'lucide-react';
 import { AdSettings, MonetagAdType } from '../types';
 import { getRotatedLink } from '../services/mockDb';
 
@@ -14,9 +14,10 @@ interface AdSimulatorProps {
 export const DEFAULT_MONETAG_SCRIPT = 'https://alwingulla.com/script/suv4.js';
 
 export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, settings, type = 'REWARDED_INTERSTITIAL' }) => {
-  const [status, setStatus] = useState<'IDLE' | 'LOADING' | 'SHOWING' | 'ERROR'>('IDLE');
+  const [status, setStatus] = useState<'IDLE' | 'LOADING' | 'SHOWING' | 'ERROR' | 'REDIRECTING'>('IDLE');
   const [errorMsg, setErrorMsg] = useState('');
   const [showRescue, setShowRescue] = useState(false);
+  const [activeLink, setActiveLink] = useState<string | null>(null);
   const pollingInterval = useRef<any>(null);
   const timeoutRef = useRef<any>(null);
   const rescueTimerRef = useRef<any>(null);
@@ -28,15 +29,17 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
   };
 
   const handleDirectLinkFallback = async () => {
+    setStatus('REDIRECTING');
     try {
         const link = await getRotatedLink();
         if (link) {
+            setActiveLink(link);
+            // We try to open automatically, but if it fails, the UI will show a button
             window.open(link, '_blank');
-            setStatus('SHOWING');
-            // Credit points after 10s for manual visits
-            timeoutRef.current = setTimeout(onComplete, 10000);
+            // Credit points after 15s for manual visits
+            timeoutRef.current = setTimeout(onComplete, 15000);
         } else {
-            throw new Error("No fallback configured.");
+            throw new Error("No fallback links configured.");
         }
     } catch (e) {
         setStatus('ERROR');
@@ -49,6 +52,7 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
     setStatus('LOADING');
     setErrorMsg('');
     setShowRescue(false);
+    setActiveLink(null);
 
     // 1. Determine the relevant Zone ID for this context
     let zoneId = '';
@@ -59,18 +63,17 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
         default: zoneId = settings.monetagZoneId || '';
     }
 
-    // 2. Fallback to global zone if specific is missing
     if (!zoneId || zoneId.trim() === '') {
         zoneId = (settings.monetagZoneId || '').trim();
     }
 
-    // 3. If no Zone ID is provided, go straight to Direct Link
-    if (!zoneId) {
+    // 2. If no Zone ID is provided OR type is DIRECT, use Link Rotation
+    if (!zoneId || type === 'DIRECT') {
         await handleDirectLinkFallback();
         return;
     }
 
-    // 4. Inject SDK Script with data-zone attribute (Crucial for Monetag)
+    // 3. Inject SDK Script
     const scriptId = `monetag-sdk-${zoneId}`;
     if (!document.getElementById(scriptId)) {
         const script = document.createElement('script');
@@ -79,12 +82,12 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
         script.dataset.zone = zoneId;
         script.async = true;
         script.onerror = () => handleDirectLinkFallback();
-        document.head.appendChild(script);
+        document.body.appendChild(script);
     }
 
-    // 5. Poll for the global show function
+    // 4. Poll for SDK
     let attempts = 0;
-    const maxAttempts = 60; // 6 seconds
+    const maxAttempts = 50; // 5 seconds
     
     pollingInterval.current = setInterval(() => {
         attempts++;
@@ -95,12 +98,8 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
             try {
                 (window as any)[funcName]();
                 setStatus('SHOWING');
-                
-                // Show rescue button after 7s in case the ad overlay doesn't block the screen
-                rescueTimerRef.current = setTimeout(() => setShowRescue(true), 7000);
-                
-                // Safety timer to credit points if user is stuck in ad
-                timeoutRef.current = setTimeout(onComplete, 25000);
+                rescueTimerRef.current = setTimeout(() => setShowRescue(true), 8000);
+                timeoutRef.current = setTimeout(onComplete, 30000);
             } catch (e) {
                 handleDirectLinkFallback();
             }
@@ -124,68 +123,91 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-6 animate-in fade-in duration-500">
-      <div className={`bg-gray-900 w-full max-w-sm rounded-[3rem] border border-white/5 shadow-2xl overflow-hidden p-8 text-center relative transition-all duration-500 ${status === 'SHOWING' && !showRescue ? 'opacity-0 pointer-events-none' : 'opacity-100 scale-100'}`}>
+    <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-3xl flex items-center justify-center p-6 animate-in fade-in duration-300">
+      <div className="bg-gray-900 w-full max-w-sm rounded-[3rem] border border-white/5 shadow-2xl overflow-hidden p-8 text-center relative animate-in zoom-in duration-300">
           
-          {status === 'LOADING' && (
+          {(status === 'LOADING' || status === 'SHOWING') && (
               <div className="space-y-6">
-                  <div className="relative w-16 h-16 mx-auto">
-                    <Loader2 className="w-full h-full text-blue-500 animate-spin" />
-                    <div className="absolute inset-0 bg-blue-500/20 blur-xl animate-pulse"></div>
+                  <div className="relative w-20 h-20 mx-auto">
+                    <Loader2 className="w-full h-full text-blue-500 animate-spin" strokeWidth={1.5} />
+                    <div className="absolute inset-0 bg-blue-500/20 blur-2xl animate-pulse"></div>
                   </div>
-                  <div>
-                    <h3 className="text-white font-black text-xs uppercase tracking-[0.2em]">Syncing Ads</h3>
-                    <p className="text-gray-500 text-[9px] mt-2 uppercase font-bold tracking-widest">Bridging Monetag TMA Node...</p>
+                  <div className="space-y-2">
+                    <h3 className="text-white font-black text-sm uppercase tracking-[0.2em]">Ad In Progress</h3>
+                    <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest px-6 leading-relaxed">
+                        Please wait for the ad to complete. Your reward will be added automatically.
+                    </p>
                   </div>
-              </div>
-          )}
-
-          {status === 'SHOWING' && (
-              <div className="space-y-6">
-                  <div className="w-16 h-16 bg-blue-600/10 rounded-2xl flex items-center justify-center mx-auto border border-blue-500/20 shadow-xl">
-                      <ShieldAlert className="text-blue-500" size={32} />
-                  </div>
-                  <div>
-                    <h3 className="text-white font-black text-sm uppercase tracking-widest">Ad Session Verified</h3>
-                    <p className="text-gray-500 text-[10px] mt-2 font-medium px-4 leading-relaxed">Please view the content to receive your reward assets.</p>
-                  </div>
-                  <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-600 animate-[shimmer_2s_infinite] w-full"></div>
-                  </div>
+                  
                   {showRescue && (
-                      <button 
-                        onClick={onComplete}
-                        className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest animate-in slide-in-from-bottom-2 shadow-xl shadow-blue-900/30 flex items-center justify-center gap-2"
-                      >
-                         <RefreshCw size={14} className="animate-spin-slow" /> Force Claim Reward
-                      </button>
+                      <div className="pt-4 space-y-4">
+                          <p className="text-amber-500 text-[9px] font-black uppercase tracking-widest animate-pulse">Having Trouble?</p>
+                          <button 
+                            onClick={onComplete}
+                            className="w-full bg-white/5 hover:bg-white/10 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border border-white/10 flex items-center justify-center gap-2"
+                          >
+                             <RefreshCw size={14} /> Bypass & Claim Reward
+                          </button>
+                      </div>
                   )}
               </div>
           )}
 
+          {status === 'REDIRECTING' && (
+              <div className="space-y-8 py-4">
+                  <div className="w-20 h-20 bg-blue-600/10 rounded-3xl flex items-center justify-center mx-auto border border-blue-500/20 shadow-xl">
+                      <MousePointer2 className="text-blue-500 animate-bounce" size={40} />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-white font-black text-sm uppercase tracking-[0.15em]">Redirecting to Sponsor</h3>
+                    <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed px-4">
+                        Click the button below to visit the sponsor link and unlock your reward.
+                    </p>
+                  </div>
+                  
+                  {activeLink && (
+                    <a 
+                        href={activeLink} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        onClick={() => {
+                            // Start a shorter timer for completion once they click
+                            if(timeoutRef.current) clearTimeout(timeoutRef.current);
+                            timeoutRef.current = setTimeout(onComplete, 12000);
+                        }}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-[1.8rem] font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-2 shadow-2xl shadow-blue-900/30 transition-all active:scale-95 border border-blue-400/20"
+                    >
+                        Visit Link <ExternalLink size={16} />
+                    </a>
+                  )}
+
+                  <p className="text-gray-700 text-[9px] font-black uppercase tracking-[0.3em] pt-2">
+                    Reward credits in 15 seconds
+                  </p>
+              </div>
+          )}
+
           {status === 'ERROR' && (
-              <div className="space-y-4">
-                  <AlertCircle className="text-red-500 mx-auto" size={40} />
-                  <p className="text-red-400 text-[10px] font-black uppercase tracking-widest leading-relaxed">{errorMsg}</p>
+              <div className="space-y-6 py-6">
+                  <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto border border-red-500/20">
+                    <AlertCircle className="text-red-500" size={40} />
+                  </div>
+                  <p className="text-red-400 text-[10px] font-black uppercase tracking-widest leading-relaxed">
+                    {errorMsg}
+                  </p>
+                  <button onClick={onComplete} className="text-gray-500 text-[10px] font-black uppercase underline tracking-widest">
+                      Continue to Reward
+                  </button>
               </div>
           )}
 
           <button 
             onClick={onComplete}
-            className="mt-10 text-gray-700 hover:text-gray-400 text-[9px] font-black uppercase tracking-[0.4em] transition-colors"
+            className="mt-12 text-gray-800 hover:text-gray-500 text-[8px] font-black uppercase tracking-[0.5em] transition-colors"
           >
-              Skip
+              Close Overlay
           </button>
       </div>
-      <style>{`
-        @keyframes shimmer {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
-        }
-        .animate-spin-slow {
-            animation: spin 3s linear infinite;
-        }
-      `}</style>
     </div>
   );
 };

@@ -17,7 +17,8 @@ import {
   Link as LinkIcon,
   Info,
   Layout,
-  LayoutGrid
+  LayoutGrid,
+  MousePointerClick
 } from 'lucide-react';
 
 export const AdminAds: React.FC = () => {
@@ -139,7 +140,7 @@ export const AdminAds: React.FC = () => {
              <div className="bg-blue-500/10 p-2 rounded-lg text-blue-500 border border-blue-500/10">
                 <LayoutGrid size={20} />
              </div>
-             <h2 className="text-xl font-black text-white uppercase tracking-tight">Monetag TMA SDK</h2>
+             <h2 className="text-xl font-black text-white uppercase tracking-tight">Telegram SDK Ads</h2>
           </div>
 
           <div className="bg-blue-500/5 p-4 rounded-2xl border border-blue-500/10 flex gap-3">
@@ -151,7 +152,7 @@ export const AdminAds: React.FC = () => {
 
           <div className="space-y-6">
              <div className="space-y-2">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Rewarded Interstitial Zone ID</label>
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Rewarded Interstitial (Tasks/Shorts)</label>
                 <input 
                     type="text" 
                     className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner"
@@ -161,7 +162,7 @@ export const AdminAds: React.FC = () => {
                 />
              </div>
              <div className="space-y-2">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Rewarded Popup Zone ID</label>
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Rewarded Popup (Games/Popups)</label>
                 <input 
                     type="text" 
                     className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner"
@@ -171,7 +172,7 @@ export const AdminAds: React.FC = () => {
                 />
              </div>
              <div className="space-y-2">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">In-App Interstitial Zone ID</label>
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">In-App Interstitial (Transitions)</label>
                 <input 
                     type="text" 
                     className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner"
@@ -190,7 +191,7 @@ export const AdminAds: React.FC = () => {
                  <div className="bg-purple-500/10 p-2 rounded-lg text-purple-500 border border-purple-500/10">
                     <RotateCcw size={20} />
                  </div>
-                 <h2 className="text-xl font-black text-white uppercase tracking-tight">Direct Link Rotation</h2>
+                 <h2 className="text-xl font-black text-white uppercase tracking-tight">Dynamic Ad Rotation</h2>
               </div>
               <button 
                 onClick={() => setSettings({ ...settings, rotation: { ...settings.rotation!, isEnabled: !settings.rotation?.isEnabled }})}
@@ -200,12 +201,19 @@ export const AdminAds: React.FC = () => {
               </button>
            </div>
 
+           <div className="bg-purple-500/5 p-4 rounded-2xl border border-purple-500/10 flex gap-3">
+              <MousePointerClick className="text-purple-500 shrink-0" size={18} />
+              <p className="text-gray-400 text-[10px] leading-relaxed">
+                 When enabled, the app will rotate between these links for any "Direct" or "Fallback" ad request. This works alongside the Telegram SDK.
+              </p>
+           </div>
+
            {settings.rotation?.isEnabled && (
                <div className="space-y-6 animate-in slide-in-from-top-4 duration-500">
                   <div className="flex gap-2">
                     <input 
                         type="text" 
-                        placeholder="Paste fallback link..." 
+                        placeholder="Paste sponsor link..." 
                         className="flex-1 bg-[#0b1120] border border-white/5 text-white p-4 rounded-xl text-[10px] outline-none focus:border-purple-500/50 font-mono"
                         value={newUrl}
                         onChange={e => setNewUrl(e.target.value)}
@@ -238,7 +246,7 @@ export const AdminAds: React.FC = () => {
              <div className="bg-yellow-500/10 p-2 rounded-lg text-yellow-500 border border-yellow-500/10">
                 <Zap size={20} />
              </div>
-             <h2 className="text-xl font-black text-white uppercase tracking-tight">Global SDK Fallback</h2>
+             <h2 className="text-xl font-black text-white uppercase tracking-tight">Global Integration Tag</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -255,11 +263,11 @@ export const AdminAds: React.FC = () => {
              </div>
              
              <div className="space-y-2.5">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Primary Global Zone ID</label>
+                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Global Fallback Zone ID</label>
                 <input 
                    type="text" 
                    className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-yellow-500/50 outline-none font-mono text-xs"
-                   placeholder="General Zone ID"
+                   placeholder="Universal Zone ID"
                    value={settings.monetagZoneId || ''}
                    onChange={e => setSettings({ ...settings, monetagZoneId: e.target.value })}
                 />
