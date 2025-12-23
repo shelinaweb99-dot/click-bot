@@ -4,7 +4,7 @@ import { getCurrentUserId, getShorts, getShortsSettings, getUserById, recordShor
 import { ShortVideo, ShortsSettings, AdSettings, User } from '../../types';
 import { AdSimulator } from '../../components/AdSimulator';
 import { YouTubePlayer } from '../../components/YouTubePlayer';
-import { Heart, Loader2, Info, CheckCircle, Clock, Play, RefreshCw, Volume2, VolumeX, AlertTriangle } from 'lucide-react';
+import { Heart, Loader2, CheckCircle, Clock, Play, RefreshCw, Volume2, VolumeX, AlertTriangle } from 'lucide-react';
 
 export const ShortsFeed: React.FC = () => {
   const [videos, setVideos] = useState<ShortVideo[]>([]);
@@ -35,10 +35,10 @@ export const ShortsFeed: React.FC = () => {
       return () => { isMountedRef.current = false; };
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (isRefresh = false) => {
       try {
         if (!userId) return;
-        if (isMountedRef.current) setLoading(true);
+        if (!isRefresh && isMountedRef.current) setLoading(true);
 
         const [allVideos, s, a, u] = await Promise.all([
             getShorts(),
@@ -50,16 +50,21 @@ export const ShortsFeed: React.FC = () => {
         if (!isMountedRef.current) return;
 
         // --- 24-HOUR COOLDOWN FILTER ---
+        // We filter out videos that were watched in the last 24 hours.
         const now = Date.now();
         const validVideos = allVideos.filter(video => {
             const history = u?.shortsData?.lastWatched;
-            const lastWatchedStr = history instanceof Map ? history.get(video.id) : (history?.[video.id]);
+            // Handle both Map and plain object cases from MongoDB/API
+            const lastWatchedStr = (history instanceof Map) 
+                ? history.get(video.id) 
+                : (history ? (history as any)[video.id] : null);
             
             if (!lastWatchedStr) return true;
             
             const lastWatchedTime = new Date(lastWatchedStr).getTime();
             const diffHours = (now - lastWatchedTime) / (1000 * 60 * 60);
             
+            // If watched more than 24 hours ago, it's available again
             return diffHours >= 24; 
         });
 
@@ -87,12 +92,11 @@ export const ShortsFeed: React.FC = () => {
         clearTimeout(timeoutId);
         timeoutId = setTimeout(() => {
             if (!isMountedRef.current || !container) return;
-            // Use Math.round to find the closest element to the current scroll position
             const index = Math.round(container.scrollTop / container.clientHeight);
             if (index !== activeIndex && index >= 0 && index < videos.length) {
                 setActiveIndex(index);
             }
-        }, 50); // Faster update for better responsiveness
+        }, 100);
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
@@ -117,16 +121,17 @@ export const ShortsFeed: React.FC = () => {
 
     setCurrentVideoStatus('IDLE');
     
-    // Slight delay before playing to ensure UI has snapped correctly
     const timer = setTimeout(() => {
-        if (isMountedRef.current) handleManualPlay(videos[activeIndex].id);
+        if (isMountedRef.current && videos[activeIndex]) {
+            handleManualPlay(videos[activeIndex].id);
+        }
     }, 400); 
     
     return () => clearTimeout(timer);
   }, [activeIndex, videos]);
 
   useEffect(() => {
-      if (playingVideoId !== videos[activeIndex]?.id) return;
+      if (!videos[activeIndex] || playingVideoId !== videos[activeIndex].id) return;
 
       let interval: any;
       if (currentVideoStatus === 'WATCHING' && settings) {
@@ -175,11 +180,22 @@ export const ShortsFeed: React.FC = () => {
                   watchedTodayCount: newWatchedTodayCount
               }));
 
+              // Check if we should show an ad
               if (settings && newWatchedTodayCount > 0 && newWatchedTodayCount % settings.adFrequency === 0) {
                    setTimeout(() => {
                        if (isMountedRef.current) setShowAd(true);
-                   }, 1000); 
+                   }, 1500); 
               }
+
+              // AUTOMATIC COOLDOWN LOCK:
+              // After a short delay to let the user see the "Earned" badge, 
+              // we remove the video from the feed to respect the "can't watch again" rule.
+              setTimeout(() => {
+                  if (isMountedRef.current) {
+                      setVideos(prev => prev.filter(v => v.id !== videoId));
+                      // Note: activeIndex will point to the next video naturally as the array shifts
+                  }
+              }, 2000);
           }
       } catch (e) {
           console.error(e);
@@ -191,7 +207,7 @@ export const ShortsFeed: React.FC = () => {
       if (!userId) return;
       try {
           await recordAdReward(userId);
-          await loadData();
+          await loadData(true);
       } catch (e) { console.error(e); }
   };
 
@@ -206,12 +222,12 @@ export const ShortsFeed: React.FC = () => {
 
   if (videos.length === 0) {
       return (
-          <div className="flex flex-col items-center justify-center h-[calc(100vh-80px)] bg-[#030712] text-white p-6 text-center">
+          <div className="flex flex-col items-center justify-center h-[calc(100vh-80px)] bg-[#030712] text-white p-6 text-center animate-in fade-in duration-500">
               <Clock size={48} className="text-gray-700 mb-6" />
-              <h2 className="text-2xl font-black tracking-tight">QUIET ZONE</h2>
-              <p className="text-gray-500 mt-2 text-sm max-w-[240px] leading-relaxed">You've watched all available videos. New rewards unlock 24 hours after completion.</p>
-              <button onClick={() => loadData()} className="mt-8 bg-gray-900 border border-white/5 px-8 py-3 rounded-2xl text-blue-500 text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all">
-                Check for Sync
+              <h2 className="text-2xl font-black tracking-tight uppercase">DAILY MISSIONS DONE</h2>
+              <p className="text-gray-500 mt-2 text-sm max-w-[240px] leading-relaxed font-medium italic">You've watched all available videos for now. Each video resets 24 hours after completion.</p>
+              <button onClick={() => loadData(true)} className="mt-8 bg-gray-900 border border-white/5 px-8 py-4 rounded-2xl text-blue-500 text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl">
+                Refresh Status
               </button>
           </div>
       );
@@ -236,7 +252,7 @@ export const ShortsFeed: React.FC = () => {
                     <div 
                         key={video.id} 
                         className="w-full h-full snap-start relative bg-black flex items-center justify-center"
-                        style={{ scrollSnapStop: 'always' }} // CRITICAL: Forces one video per scroll
+                        style={{ scrollSnapStop: 'always' }}
                     >
                         <div className="absolute inset-0 z-0 opacity-40">
                              <img src={`https://img.youtube.com/vi/${video.youtubeId}/hqdefault.jpg`} className="w-full h-full object-cover blur-3xl" alt="bg" />
@@ -277,7 +293,7 @@ export const ShortsFeed: React.FC = () => {
                         <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-6 z-50 bg-gradient-to-b from-black/50 via-transparent to-black/90">
                             <div className="flex justify-between items-start">
                                 <div className="bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full text-[8px] font-black uppercase tracking-widest text-white border border-white/5">
-                                    {index + 1} / {videos.length} Shorts
+                                    {index + 1} / {videos.length} Available
                                 </div>
                                 <button onClick={() => setIsMuted(!isMuted)} className="bg-black/40 backdrop-blur-md p-3 rounded-2xl text-white/80 border border-white/5 pointer-events-auto">
                                     {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
@@ -287,12 +303,12 @@ export const ShortsFeed: React.FC = () => {
                             <div className="mb-12 flex items-end justify-between w-full">
                                 <div className="flex-1 pr-12">
                                     <h3 className="text-white font-black text-xl drop-shadow-xl line-clamp-2 leading-tight uppercase tracking-tighter">
-                                        {video.title || 'Mission Reward Video'}
+                                        {video.title || 'Reward Shorts'}
                                     </h3>
                                     
                                     {currentVideoStatus === 'COMPLETED' ? (
                                         <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg animate-in zoom-in">
-                                            <CheckCircle size={14} /> +{settings.pointsPerVideo} Earned
+                                            <CheckCircle size={14} /> +{settings.pointsPerVideo} Pts Claimed
                                         </div>
                                     ) : (
                                         <div className="mt-5 w-full max-w-[200px] h-1.5 bg-gray-800 rounded-full overflow-hidden">
@@ -305,7 +321,7 @@ export const ShortsFeed: React.FC = () => {
                                     <div className={`p-4 rounded-2xl transition-all shadow-xl ${currentVideoStatus === 'COMPLETED' ? 'bg-red-500 scale-110' : 'bg-gray-900 border border-white/5'}`}>
                                         <Heart size={24} className="text-white" fill={currentVideoStatus === 'COMPLETED' ? "currentColor" : "none"} />
                                     </div>
-                                    <button onClick={() => loadData()} className="p-4 bg-gray-900 rounded-2xl text-white border border-white/5 shadow-xl active:rotate-180 transition-transform">
+                                    <button onClick={() => loadData(true)} className="p-4 bg-gray-900 rounded-2xl text-white border border-white/5 shadow-xl active:rotate-180 transition-transform">
                                         <RefreshCw size={24} />
                                     </button>
                                 </div>
