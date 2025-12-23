@@ -16,7 +16,6 @@ async function connectToDatabase() {
         throw new Error("MONGODB_URI environment variable is not defined");
     }
 
-    // If a connection is already in progress, wait for it
     if (mongoose.connection.readyState === 2) {
         return new Promise((resolve, reject) => {
             const check = () => {
@@ -32,17 +31,15 @@ async function connectToDatabase() {
         mongoose.set('strictQuery', true);
         const opts = {
             bufferCommands: false,
-            serverSelectionTimeoutMS: 5000, // Reduced for faster failover
+            serverSelectionTimeoutMS: 5000,
             socketTimeoutMS: 30000,
             connectTimeoutMS: 10000,
-            maxPoolSize: 1, // Minimize connections for serverless
+            maxPoolSize: 1,
             minPoolSize: 0,
         };
         
-        console.log("Connecting to MongoDB...");
         const conn = await mongoose.connect(uri, opts);
         cachedDb = conn.connection;
-        console.log("Connected to MongoDB");
         return cachedDb;
     } catch (e) {
         console.error("MongoDB Connection Error:", e);
@@ -50,7 +47,34 @@ async function connectToDatabase() {
     }
 }
 
-// --- 2. MODELS ---
+// --- 2. SECURITY UTILS ---
+function validateTelegramInitData(initData, botToken) {
+    if (!initData || !botToken) return false;
+    try {
+        const urlParams = new URLSearchParams(initData);
+        const hash = urlParams.get('hash');
+        urlParams.delete('hash');
+
+        const sortedParams = Array.from(urlParams.entries())
+            .map(([key, value]) => `${key}=${value}`)
+            .sort()
+            .join('\n');
+
+        const secretKey = crypto.createHmac('sha256', 'WebAppData')
+            .update(botToken)
+            .digest();
+
+        const calculatedHash = crypto.createHmac('sha256', secretKey)
+            .update(sortedParams)
+            .digest('hex');
+
+        return calculatedHash === hash;
+    } catch (e) {
+        return false;
+    }
+}
+
+// --- 3. MODELS ---
 const UserSchema = new mongoose.Schema({
     id: { type: String, required: true, unique: true, index: true },
     email: { type: String, required: true, unique: true },
@@ -61,6 +85,7 @@ const UserSchema = new mongoose.Schema({
     balance: { type: Number, default: 0 },
     blocked: { type: Boolean, default: false },
     lastDailyCheckIn: String,
+    lastActivityTime: { type: Number, default: 0 }, // For Rate Limiting
     dailyStreak: { type: Number, default: 0 },
     ipAddress: String,
     name: String,
@@ -143,7 +168,8 @@ async function authenticateUser(req) {
     const token = authHeader.split(' ')[1];
     if (!token) return null;
     try {
-        return await User.findOne({ sessionToken: token, tokenExpires: { $gt: new Date() } }).lean();
+        const user = await User.findOne({ sessionToken: token, tokenExpires: { $gt: new Date() } });
+        return user;
     } catch (e) { return null; }
 }
 
@@ -161,6 +187,7 @@ export default async function handler(req, res) {
         const { action, ...data } = req.body || {};
         const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
+        // AUTH ACTIONS
         if (action === 'login' || action === 'register') {
             const { email, password, ...userData } = data;
             if (!email || !password) return res.status(400).json({ message: "Credentials missing." });
@@ -194,6 +221,27 @@ export default async function handler(req, res) {
         if (!currentUser) return res.status(401).json({ message: "Session expired." });
         if (currentUser.blocked) return res.status(403).json({ message: "Access restricted." });
 
+        // TELEGRAM VALIDATION (Only for points-claiming actions)
+        const sensitiveActions = ['completeTask', 'completeAd', 'completeShort', 'dailyCheckIn', 'playMiniGame'];
+        if (sensitiveActions.includes(action)) {
+            const initData = req.headers['x-telegram-init-data'];
+            const sysDoc = await Setting.findById('system').lean();
+            const botToken = sysDoc?.data?.telegramBotToken;
+            
+            // If bot token is set in admin, we enforce validation
+            if (botToken && !validateTelegramInitData(initData, botToken)) {
+                return res.status(403).json({ message: "Security Breach: Request origin could not be verified by Telegram Protocol." });
+            }
+
+            // Basic Rate Limiting (Prevent macro users)
+            const now = Date.now();
+            if (now - currentUser.lastActivityTime < 1500) { // 1.5s cooldown between sensitive actions
+                return res.status(429).json({ message: "Action too fast. Please wait." });
+            }
+            currentUser.lastActivityTime = now;
+            await currentUser.save();
+        }
+
         switch (action) {
             case 'getUser': return res.json(currentUser);
             case 'getTasks': return res.json(await Task.find({ status: 'ACTIVE' }).lean());
@@ -214,27 +262,16 @@ export default async function handler(req, res) {
             
             case 'adminGetWithdrawals':
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Admin access required." });
-                const allWithdrawals = await Withdrawal.find({}).sort({ date: -1 }).lean();
-                return res.json(allWithdrawals);
+                return res.json(await Withdrawal.find({}).sort({ date: -1 }).lean());
 
             case 'updateWithdrawal': {
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
                 const { id, status } = data;
                 const withdrawal = await Withdrawal.findOne({ id });
                 if (!withdrawal) return res.status(404).json({ message: "Request not found" });
-                
                 if (status === 'REJECTED' && withdrawal.status === 'PENDING') {
                     await User.updateOne({ id: withdrawal.userId }, { $inc: { balance: withdrawal.amount } });
-                    await Transaction.create({
-                        id: 'tx_rf_' + Date.now(),
-                        userId: withdrawal.userId,
-                        amount: withdrawal.amount,
-                        type: 'BONUS',
-                        description: `Refund: Withdrawal #${id}`,
-                        date: new Date().toISOString()
-                    });
                 }
-                
                 withdrawal.status = status;
                 await withdrawal.save();
                 return res.json({ success: true });
@@ -242,8 +279,7 @@ export default async function handler(req, res) {
 
             case 'saveTask': {
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
-                const taskData = data.payload;
-                await Task.findOneAndUpdate({ id: taskData.id }, taskData, { upsert: true });
+                await Task.findOneAndUpdate({ id: data.payload.id }, data.payload, { upsert: true });
                 return res.json({ success: true });
             }
 
@@ -272,28 +308,11 @@ export default async function handler(req, res) {
 
             case 'createWithdrawal': {
                 const { request } = data;
-                const user = await User.findOne({ id: currentUser.id });
-                if (user.balance < request.amount) return res.status(400).json({ message: "Insufficient balance." });
-                
-                user.balance -= request.amount;
-                await user.save();
-                
-                await Withdrawal.create({
-                    ...request,
-                    userId: user.id,
-                    userName: user.name,
-                    status: 'PENDING'
-                });
-                
-                await Transaction.create({
-                    id: 'tx_w_' + Date.now(),
-                    userId: user.id,
-                    amount: request.amount,
-                    type: 'WITHDRAWAL',
-                    description: `Withdrawal via ${request.method}`,
-                    date: new Date().toISOString()
-                });
-                
+                if (currentUser.balance < request.amount) return res.status(400).json({ message: "Insufficient balance." });
+                currentUser.balance -= request.amount;
+                await currentUser.save();
+                await Withdrawal.create({ ...request, userId: currentUser.id, userName: currentUser.name, status: 'PENDING' });
+                await Transaction.create({ id: 'tx_w_' + Date.now(), userId: currentUser.id, amount: request.amount, type: 'WITHDRAWAL', description: `Withdrawal via ${request.method}`, date: new Date().toISOString() });
                 return res.json({ success: true });
             }
 
@@ -301,119 +320,68 @@ export default async function handler(req, res) {
                 const { taskId } = data;
                 const task = await Task.findOne({ id: taskId }).lean();
                 if (!task) return res.status(404).json({ message: "Task no longer available." });
-
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: task.reward } });
-
-                await Transaction.create({
-                    id: 'tx_t_' + Date.now(),
-                    userId: currentUser.id,
-                    taskId: task.id,
-                    amount: task.reward,
-                    type: 'EARNING',
-                    description: `Task Completed: ${task.title}`,
-                    date: new Date().toISOString()
-                });
-
+                await Transaction.create({ id: 'tx_t_' + Date.now(), userId: currentUser.id, taskId: task.id, amount: task.reward, type: 'EARNING', description: `Task Completed: ${task.title}`, date: new Date().toISOString() });
                 return res.json({ success: true, reward: task.reward });
-            }
-
-            case 'processReferral': {
-                const { userId, code } = data;
-                const user = await User.findOne({ id: currentUser.id });
-                if (user.referredBy) return res.status(400).json({ message: "Referral already claimed." });
-                if (code === user.id) return res.status(400).json({ message: "Cannot refer oneself." });
-                
-                const referrer = await User.findOne({ id: code });
-                if (!referrer) return res.status(404).json({ message: "Referral code invalid." });
-
-                referrer.balance += 25;
-                referrer.referralCount += 1;
-                referrer.referralEarnings += 25;
-                await referrer.save();
-
-                user.balance += 10;
-                user.referredBy = code;
-                await user.save();
-
-                await Transaction.create({ id: 'tx_r1_' + Date.now(), userId: referrer.id, amount: 25, type: 'REFERRAL', description: `Referral Bonus: ${user.name}`, date: new Date().toISOString() });
-                await Transaction.create({ id: 'tx_r2_' + Date.now(), userId: user.id, amount: 10, type: 'BONUS', description: `Referral Join Bonus`, date: new Date().toISOString() });
-
-                return res.json({ success: true, message: "Referral reward processed." });
             }
 
             case 'completeShort': {
                 const videoId = data.videoId;
                 if (!videoId) return res.status(400).json({ videoId });
-                const user = await User.findOne({ id: currentUser.id });
                 const now = new Date();
                 const todayStr = now.toISOString().split('T')[0];
-                
-                if (!user.shortsData) user.shortsData = { lastWatched: new Map(), watchedTodayCount: 0, lastResetDate: todayStr };
-                const lastWatchedStr = user.shortsData.lastWatched.get(videoId);
-                if (lastWatchedStr) {
-                    const lastWatched = new Date(lastWatchedStr);
-                    const diffHours = (now.getTime() - lastWatched.getTime()) / (1000 * 60 * 60);
-                    if (diffHours < 24) return res.status(400).json({ message: "Cooldown active." });
-                }
-                
-                if (user.shortsData.lastResetDate !== todayStr) {
-                    user.shortsData.watchedTodayCount = 0;
-                    user.shortsData.lastResetDate = todayStr;
-                }
-                
+                if (!currentUser.shortsData) currentUser.shortsData = { lastWatched: new Map(), watchedTodayCount: 0, lastResetDate: todayStr };
+                const lastWatchedStr = currentUser.shortsData.lastWatched.get(videoId);
+                if (lastWatchedStr && (now.getTime() - new Date(lastWatchedStr).getTime()) / (1000 * 60 * 60) < 24) return res.status(400).json({ message: "Cooldown active." });
                 const sDoc = await Setting.findById('shorts').lean();
                 const reward = Number(sDoc?.data?.pointsPerVideo) || 10;
-                
-                user.balance += reward;
-                user.shortsData.lastWatched.set(videoId, now.toISOString());
-                user.shortsData.watchedTodayCount += 1;
-                user.markModified('shortsData');
-                await user.save();
-                
-                await Transaction.create({ id: 'tx_s_' + Date.now(), userId: user.id, amount: reward, type: 'SHORTS', description: `Shorts Reward`, date: now.toISOString() });
+                currentUser.balance += reward;
+                currentUser.shortsData.lastWatched.set(videoId, now.toISOString());
+                currentUser.markModified('shortsData');
+                await currentUser.save();
+                await Transaction.create({ id: 'tx_s_' + Date.now(), userId: currentUser.id, amount: reward, type: 'SHORTS', description: `Shorts Reward`, date: now.toISOString() });
+                return res.json({ success: true, reward });
+            }
+
+            case 'completeAd': {
+                const adsDoc = await Setting.findById('shorts').lean();
+                const reward = Number(adsDoc?.data?.pointsPerAd) || 5;
+                currentUser.balance += reward;
+                await currentUser.save();
+                await Transaction.create({ id: 'tx_ad_' + Date.now(), userId: currentUser.id, amount: reward, type: 'BONUS', description: `Ad Reward Received`, date: new Date().toISOString() });
                 return res.json({ success: true, reward });
             }
 
             case 'dailyCheckIn': {
                 const today = new Date().toISOString().split('T')[0];
-                const user = await User.findOne({ id: currentUser.id });
-                if (user.lastDailyCheckIn === today) return res.status(400).json({ message: "Already claimed." });
+                if (currentUser.lastDailyCheckIn === today) return res.status(400).json({ message: "Already claimed." });
                 const sys = await Setting.findById('system').lean();
                 const reward = Number(sys?.data?.dailyRewardBase) || 10;
-                
-                user.balance += reward;
-                user.dailyStreak += 1;
-                user.lastDailyCheckIn = today;
-                await user.save();
-                
-                await Transaction.create({ id: 'tx_d_' + Date.now(), userId: user.id, amount: reward, type: 'BONUS', description: 'Daily Check-in', date: new Date().toISOString() });
+                currentUser.balance += reward;
+                currentUser.dailyStreak += 1;
+                currentUser.lastDailyCheckIn = today;
+                await currentUser.save();
+                await Transaction.create({ id: 'tx_d_' + Date.now(), userId: currentUser.id, amount: reward, type: 'BONUS', description: 'Daily Check-in', date: new Date().toISOString() });
                 return res.json({ success: true, reward });
             }
 
             case 'playMiniGame': {
                 const { gameType } = data;
-                const user = await User.findOne({ id: currentUser.id });
                 const today = new Date().toISOString().split('T')[0];
                 const gamesSetting = await Setting.findById('games').lean();
                 const config = gamesSetting?.data?.[gameType] || { isEnabled: true, dailyLimit: 10, minReward: 1, maxReward: 10 };
-                
                 if (!config.isEnabled) return res.status(400).json({ message: "Game disabled." });
-
-                let stats = user.gameStats || {};
+                let stats = currentUser.gameStats || {};
                 if (stats.lastPlayedDate !== today) stats = { lastPlayedDate: today, spinCount: 0, scratchCount: 0, guessCount: 0, lotteryCount: 0 };
-                
                 const countKey = `${gameType}Count`;
                 if (stats[countKey] >= config.dailyLimit) return res.status(400).json({ message: "Limit reached." });
-
                 const reward = Math.floor(Math.random() * (config.maxReward - config.minReward + 1)) + config.minReward;
                 stats[countKey]++;
-
-                user.balance += reward;
-                user.gameStats = stats;
-                user.markModified('gameStats');
-                await user.save();
-                
-                await Transaction.create({ id: 'tx_g_' + Date.now(), userId: user.id, amount: reward, type: 'GAME', description: `Mini-Game Win`, date: new Date().toISOString() });
+                currentUser.balance += reward;
+                currentUser.gameStats = stats;
+                currentUser.markModified('gameStats');
+                await currentUser.save();
+                await Transaction.create({ id: 'tx_g_' + Date.now(), userId: currentUser.id, amount: reward, type: 'GAME', description: `Mini-Game Win`, date: new Date().toISOString() });
                 return res.json({ success: true, reward });
             }
 
@@ -436,7 +404,6 @@ export default async function handler(req, res) {
             default: return res.status(400).json({ message: "Invalid action" });
         }
     } catch (e) {
-        console.error("Handler Error:", e);
         return res.status(500).json({ message: e.message || "Internal server error" });
     }
 }

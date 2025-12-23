@@ -1,120 +1,131 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, ShieldAlert, AlertCircle, X, ExternalLink } from 'lucide-react';
-import { AdSettings } from '../types';
+import { Loader2, ShieldAlert, AlertCircle, RefreshCw, ExternalLink } from 'lucide-react';
+import { AdSettings, MonetagAdType } from '../types';
 import { getRotatedLink } from '../services/mockDb';
 
 interface AdSimulatorProps {
   onComplete: () => void;
   isOpen: boolean;
   settings: AdSettings;
+  type?: MonetagAdType;
 }
 
-export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, settings }) => {
+export const DEFAULT_MONETAG_SCRIPT = 'https://alwingulla.com/script/suv4.js';
+
+export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, settings, type = 'REWARDED_INTERSTITIAL' }) => {
   const [status, setStatus] = useState<'IDLE' | 'LOADING' | 'SHOWING' | 'ERROR'>('IDLE');
   const [errorMsg, setErrorMsg] = useState('');
-  const timeoutRef = useRef<any>(null);
+  const [showRescue, setShowRescue] = useState(false);
   const pollingInterval = useRef<any>(null);
+  const timeoutRef = useRef<any>(null);
+  const rescueTimerRef = useRef<any>(null);
 
   const cleanup = () => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
     if (pollingInterval.current) clearInterval(pollingInterval.current);
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (rescueTimerRef.current) clearTimeout(rescueTimerRef.current);
   };
 
-  const handleFallback = async (reason: string) => {
-    console.warn(`Ad Fallback Triggered: ${reason}`);
+  const handleDirectLinkFallback = async () => {
     try {
-      const link = await getRotatedLink();
-      if (link) {
-        window.open(link, '_blank');
-        setStatus('SHOWING');
-        // Standard safety timer for rewards when using direct links
-        timeoutRef.current = setTimeout(onComplete, 12000); 
-      } else {
-        throw new Error("No fallback destination found.");
-      }
+        const link = await getRotatedLink();
+        if (link) {
+            window.open(link, '_blank');
+            setStatus('SHOWING');
+            // Credit points after 10s for manual visits
+            timeoutRef.current = setTimeout(onComplete, 10000);
+        } else {
+            throw new Error("No fallback configured.");
+        }
     } catch (e) {
-      setStatus('ERROR');
-      setErrorMsg('Ad engine failed to initialize.');
-      // Auto-complete after error to prevent blocking user progress
-      timeoutRef.current = setTimeout(onComplete, 3000);
+        setStatus('ERROR');
+        setErrorMsg('Ad engine blocked. Skipping...');
+        timeoutRef.current = setTimeout(onComplete, 3000);
     }
   };
 
-  const showInterstitialAd = (zoneId: string) => {
-    const cleanZoneId = zoneId.trim();
-    // 1. Inject SDK Script if not already present
-    const scriptId = `monetag-sdk-${cleanZoneId}`;
-    if (!document.getElementById(scriptId)) {
-      const script = document.createElement('script');
-      script.id = scriptId;
-      script.src = 'https://alwingulla.com/script/suv4.js'; 
-      script.dataset.zone = cleanZoneId;
-      script.async = true;
-      script.onerror = () => handleFallback('SDK script blocked or unavailable.');
-      document.head.appendChild(script);
-    }
-
-    // 2. Poll for the Monetag TMA SDK global trigger function
-    let attempts = 0;
-    const maxAttempts = 60; // 6 seconds limit for SDK init
-    
-    pollingInterval.current = setInterval(() => {
-      const sdkFunction = (window as any)[`show_${cleanZoneId}`];
-      
-      if (typeof sdkFunction === 'function') {
-        clearInterval(pollingInterval.current);
-        try {
-          // Fire the native Monetag Interstitial
-          sdkFunction(); 
-          setStatus('SHOWING');
-          
-          // Safety net: Auto-complete reward after 15s in case the ad close event isn't trackable
-          timeoutRef.current = setTimeout(() => {
-            onComplete();
-          }, 15000); 
-        } catch (e) {
-          handleFallback('SDK execution error.');
-        }
-      } else {
-        attempts++;
-        if (attempts >= maxAttempts) {
-          clearInterval(pollingInterval.current);
-          handleFallback('SDK timed out. Switching to Direct Link.');
-        }
-      }
-    }, 100);
-  };
-
-  const startAdProcess = () => {
+  const startAdProcess = async () => {
     setStatus('LOADING');
     setErrorMsg('');
-    
-    // Priority: Specific TMA Rewarded ID > General Zone ID
-    const zoneId = settings.monetagRewardedInterstitialId || settings.monetagZoneId;
-    
-    if (zoneId && zoneId.toString().trim() !== '') {
-      showInterstitialAd(zoneId.toString().trim());
-    } else {
-      handleFallback('No Zone ID configured in Admin Panel.');
+    setShowRescue(false);
+
+    // 1. Determine the relevant Zone ID for this context
+    let zoneId = '';
+    switch(type) {
+        case 'REWARDED_INTERSTITIAL': zoneId = settings.monetagRewardedInterstitialId || ''; break;
+        case 'REWARDED_POPUP': zoneId = settings.monetagRewardedPopupId || ''; break;
+        case 'INTERSTITIAL': zoneId = settings.monetagInterstitialId || ''; break;
+        default: zoneId = settings.monetagZoneId || '';
     }
+
+    // 2. Fallback to global zone if specific is missing
+    if (!zoneId || zoneId.trim() === '') {
+        zoneId = (settings.monetagZoneId || '').trim();
+    }
+
+    // 3. If no Zone ID is provided, go straight to Direct Link
+    if (!zoneId) {
+        await handleDirectLinkFallback();
+        return;
+    }
+
+    // 4. Inject SDK Script with data-zone attribute (Crucial for Monetag)
+    const scriptId = `monetag-sdk-${zoneId}`;
+    if (!document.getElementById(scriptId)) {
+        const script = document.createElement('script');
+        script.id = scriptId;
+        script.src = settings.monetagAdTag || DEFAULT_MONETAG_SCRIPT;
+        script.dataset.zone = zoneId;
+        script.async = true;
+        script.onerror = () => handleDirectLinkFallback();
+        document.head.appendChild(script);
+    }
+
+    // 5. Poll for the global show function
+    let attempts = 0;
+    const maxAttempts = 60; // 6 seconds
+    
+    pollingInterval.current = setInterval(() => {
+        attempts++;
+        const funcName = `show_${zoneId}`;
+        
+        if (typeof (window as any)[funcName] === 'function') {
+            clearInterval(pollingInterval.current);
+            try {
+                (window as any)[funcName]();
+                setStatus('SHOWING');
+                
+                // Show rescue button after 7s in case the ad overlay doesn't block the screen
+                rescueTimerRef.current = setTimeout(() => setShowRescue(true), 7000);
+                
+                // Safety timer to credit points if user is stuck in ad
+                timeoutRef.current = setTimeout(onComplete, 25000);
+            } catch (e) {
+                handleDirectLinkFallback();
+            }
+        } else if (attempts >= maxAttempts) {
+            clearInterval(pollingInterval.current);
+            handleDirectLinkFallback();
+        }
+    }, 100);
   };
 
   useEffect(() => {
     if (!isOpen) {
-      setStatus('IDLE');
-      cleanup();
-      return;
+        setStatus('IDLE');
+        cleanup();
+        return;
     }
     startAdProcess();
     return cleanup;
-  }, [isOpen]);
+  }, [isOpen, type]);
 
   if (!isOpen) return null;
 
   return (
-    <div className={`fixed inset-0 z-[100] flex items-center justify-center p-6 animate-in fade-in transition-all duration-1000 ${status === 'SHOWING' ? 'bg-black/40 backdrop-blur-none' : 'bg-black/90 backdrop-blur-xl'}`}>
-      <div className={`bg-gray-900 w-full max-w-sm rounded-[2.5rem] border border-white/5 shadow-2xl overflow-hidden p-8 text-center relative transition-opacity duration-500 ${status === 'SHOWING' ? 'opacity-20 pointer-events-none' : 'opacity-100'}`}>
+    <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-6 animate-in fade-in duration-500">
+      <div className={`bg-gray-900 w-full max-w-sm rounded-[3rem] border border-white/5 shadow-2xl overflow-hidden p-8 text-center relative transition-all duration-500 ${status === 'SHOWING' && !showRescue ? 'opacity-0 pointer-events-none' : 'opacity-100 scale-100'}`}>
           
           {status === 'LOADING' && (
               <div className="space-y-6">
@@ -122,9 +133,9 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
                     <Loader2 className="w-full h-full text-blue-500 animate-spin" />
                     <div className="absolute inset-0 bg-blue-500/20 blur-xl animate-pulse"></div>
                   </div>
-                  <div className="space-y-2">
-                    <h3 className="text-white font-black text-xs uppercase tracking-[0.2em]">Authenticating Ad</h3>
-                    <p className="text-gray-500 text-[9px] uppercase font-bold tracking-widest">Bridging Monetag Network...</p>
+                  <div>
+                    <h3 className="text-white font-black text-xs uppercase tracking-[0.2em]">Syncing Ads</h3>
+                    <p className="text-gray-500 text-[9px] mt-2 uppercase font-bold tracking-widest">Bridging Monetag TMA Node...</p>
                   </div>
               </div>
           )}
@@ -135,40 +146,44 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
                       <ShieldAlert className="text-blue-500" size={32} />
                   </div>
                   <div>
-                    <h3 className="text-white font-black text-sm uppercase tracking-widest">Reward Session Active</h3>
-                    <p className="text-gray-500 text-[10px] mt-2 font-medium px-4">Watch the ad to claim your points. If the ad opened in a new tab, return here after viewing.</p>
+                    <h3 className="text-white font-black text-sm uppercase tracking-widest">Ad Session Verified</h3>
+                    <p className="text-gray-500 text-[10px] mt-2 font-medium px-4 leading-relaxed">Please view the content to receive your reward assets.</p>
                   </div>
                   <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden">
                       <div className="h-full bg-blue-600 animate-[shimmer_2s_infinite] w-full"></div>
                   </div>
+                  {showRescue && (
+                      <button 
+                        onClick={onComplete}
+                        className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest animate-in slide-in-from-bottom-2 shadow-xl shadow-blue-900/30 flex items-center justify-center gap-2"
+                      >
+                         <RefreshCw size={14} className="animate-spin-slow" /> Force Claim Reward
+                      </button>
+                  )}
               </div>
           )}
 
           {status === 'ERROR' && (
               <div className="space-y-4">
-                  <div className="bg-red-500/10 p-4 rounded-full w-fit mx-auto border border-red-500/20">
-                    <AlertCircle className="text-red-500" size={32} />
-                  </div>
-                  <p className="text-red-400 text-[10px] font-black uppercase tracking-widest leading-relaxed">
-                    {errorMsg}<br/>
-                    <span className="text-gray-600 font-bold uppercase text-[9px]">Auto-crediting reward shortly...</span>
-                  </p>
+                  <AlertCircle className="text-red-500 mx-auto" size={40} />
+                  <p className="text-red-400 text-[10px] font-black uppercase tracking-widest leading-relaxed">{errorMsg}</p>
               </div>
           )}
 
-          {status !== 'SHOWING' && (
-            <button 
-              onClick={onComplete}
-              className="mt-8 text-gray-700 hover:text-gray-400 text-[9px] font-black uppercase tracking-[0.3em] transition-colors"
-            >
-                Close / Skip
-            </button>
-          )}
+          <button 
+            onClick={onComplete}
+            className="mt-10 text-gray-700 hover:text-gray-400 text-[9px] font-black uppercase tracking-[0.4em] transition-colors"
+          >
+              Skip
+          </button>
       </div>
       <style>{`
         @keyframes shimmer {
           0% { transform: translateX(-100%); }
           100% { transform: translateX(100%); }
+        }
+        .animate-spin-slow {
+            animation: spin 3s linear infinite;
         }
       `}</style>
     </div>
