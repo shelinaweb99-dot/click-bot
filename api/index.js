@@ -7,27 +7,46 @@ import bcrypt from 'bcryptjs';
 let cachedDb = null;
 
 async function connectToDatabase() {
-    if (cachedDb && mongoose.connection.readyState === 1) return cachedDb;
+    if (cachedDb && mongoose.connection.readyState === 1) {
+        return cachedDb;
+    }
     
     const uri = process.env.MONGODB_URI;
-    if (!uri) throw new Error("MONGODB_URI is missing");
-    
+    if (!uri) {
+        throw new Error("MONGODB_URI environment variable is not defined");
+    }
+
+    // If a connection is already in progress, wait for it
+    if (mongoose.connection.readyState === 2) {
+        return new Promise((resolve, reject) => {
+            const check = () => {
+                if (mongoose.connection.readyState === 1) resolve(mongoose.connection);
+                else if (mongoose.connection.readyState === 0) reject(new Error("Connection failed"));
+                else setTimeout(check, 100);
+            };
+            check();
+        });
+    }
+
     try {
         mongoose.set('strictQuery', true);
         const opts = {
-            serverSelectionTimeoutMS: 20000,
-            socketTimeoutMS: 60000, 
-            connectTimeoutMS: 20000,
-            maxPoolSize: 10,
+            bufferCommands: false,
+            serverSelectionTimeoutMS: 5000, // Reduced for faster failover
+            socketTimeoutMS: 30000,
+            connectTimeoutMS: 10000,
+            maxPoolSize: 1, // Minimize connections for serverless
+            minPoolSize: 0,
         };
-        if (mongoose.connection.readyState === 0) {
-            await mongoose.connect(uri, opts);
-        }
-        cachedDb = mongoose.connection;
+        
+        console.log("Connecting to MongoDB...");
+        const conn = await mongoose.connect(uri, opts);
+        cachedDb = conn.connection;
+        console.log("Connected to MongoDB");
         return cachedDb;
     } catch (e) {
-        console.error("Database connection failure:", e);
-        throw new Error("Critical: Database connection failed.");
+        console.error("MongoDB Connection Error:", e);
+        throw e;
     }
 }
 

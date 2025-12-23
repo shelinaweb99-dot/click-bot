@@ -11,105 +11,48 @@ interface AdSimulatorProps {
   type?: MonetagAdType;
 }
 
-export const DEFAULT_MONETAG_SCRIPT = 'https://alwingulla.com/script/suv4.js';
-
-export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, settings, type = 'REWARDED_INTERSTITIAL' }) => {
+export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, settings }) => {
   const [status, setStatus] = useState<'IDLE' | 'LOADING' | 'SHOWING' | 'ERROR'>('IDLE');
   const [errorMsg, setErrorMsg] = useState('');
-  const pollingInterval = useRef<any>(null);
   const timeoutRef = useRef<any>(null);
 
   const startAdProcess = async () => {
     setStatus('LOADING');
     setErrorMsg('');
 
-    // --- MODE 1: DYNAMIC / DIRECT LINK ---
-    if (type === 'DIRECT' || (!settings.monetagZoneId && !settings.monetagRewardedInterstitialId && type !== 'INTERSTITIAL')) {
-        try {
-            const link = await getRotatedLink();
-            if (link) {
-                window.open(link, '_blank');
-                setStatus('SHOWING');
-                // Auto-complete after 10s for direct links as we can't track them
-                timeoutRef.current = setTimeout(onComplete, 10000);
-            } else {
-                throw new Error("No dynamic link configured.");
-            }
-        } catch (e: any) {
-            setStatus('ERROR');
-            setErrorMsg(e.message || 'Direct link failure.');
-            setTimeout(onComplete, 2000);
-        }
-        return;
-    }
-
-    // --- MODE 2: TELEGRAM SDK (ZONE ID) ---
-    let zoneId = '';
-    switch(type) {
-        case 'REWARDED_INTERSTITIAL': zoneId = settings.monetagRewardedInterstitialId || ''; break;
-        case 'REWARDED_POPUP': zoneId = settings.monetagRewardedPopupId || ''; break;
-        case 'INTERSTITIAL': zoneId = settings.monetagInterstitialId || ''; break;
-        default: zoneId = settings.monetagZoneId || '';
-    }
-
-    if (!zoneId) zoneId = settings.monetagZoneId || '';
-
-    if (!zoneId) {
-        setStatus('ERROR');
-        setErrorMsg('Ad Zone ID not found.');
-        setTimeout(onComplete, 2000);
-        return;
-    }
-
-    // Inject/Ensure Script
-    const scriptId = `monetag-sdk-${zoneId}`;
-    if (!document.getElementById(scriptId)) {
-        const script = document.createElement('script');
-        script.id = scriptId;
-        script.src = settings.monetagAdTag || DEFAULT_MONETAG_SCRIPT;
-        script.async = true;
-        script.dataset.zone = zoneId;
-        // Fix: Ensure the script is actually added to the body/head
-        document.body.appendChild(script);
-    }
-
-    let attempts = 0;
-    const maxAttempts = 60; // 6 seconds
-    pollingInterval.current = setInterval(() => {
-        attempts++;
-        const funcName = `show_${zoneId}`;
+    try {
+        // Fetch the link (either the Primary Direct Link or the next one in the Rotation)
+        const link = await getRotatedLink();
         
-        if (typeof (window as any)[funcName] === 'function') {
-            clearInterval(pollingInterval.current);
-            try {
-                (window as any)[funcName]();
-                setStatus('SHOWING');
-                // Safety timer to credit points if SDK doesn't callback
-                timeoutRef.current = setTimeout(onComplete, 20000); 
-            } catch (e) {
-                setStatus('ERROR');
-                setErrorMsg('SDK Execution Error.');
-                setTimeout(onComplete, 2000);
-            }
-        } else if (attempts >= maxAttempts) {
-            clearInterval(pollingInterval.current);
-            setStatus('ERROR');
-            setErrorMsg('SDK Timeout. Points will be credited.');
-            setTimeout(onComplete, 2500); // Fail gracefully but credit user
+        if (link) {
+            // Open the ad link in a new tab
+            window.open(link, '_blank');
+            setStatus('SHOWING');
+            
+            // Auto-complete after a set time (e.g., 8 seconds) to credit the user
+            // Since we can't track external browser closure reliably, we use a timer
+            timeoutRef.current = setTimeout(() => {
+                onComplete();
+            }, 8000); 
+        } else {
+            throw new Error("No ad destination configured.");
         }
-    }, 100);
+    } catch (e: any) {
+        setStatus('ERROR');
+        setErrorMsg(e.message || 'Ad delivery failed.');
+        // Don't block the user if the ad fails
+        setTimeout(onComplete, 2000);
+    }
   };
 
   useEffect(() => {
     if (!isOpen) {
         setStatus('IDLE');
-        if (pollingInterval.current) clearInterval(pollingInterval.current);
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         return;
     }
     startAdProcess();
     return () => {
-        if (pollingInterval.current) clearInterval(pollingInterval.current);
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, [isOpen]);
@@ -127,8 +70,8 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
                     <div className="absolute inset-0 bg-blue-500/20 blur-xl animate-pulse"></div>
                   </div>
                   <div>
-                    <h3 className="text-white font-black text-xs uppercase tracking-[0.2em]">Initializing Ad</h3>
-                    <p className="text-gray-500 text-[9px] mt-2 uppercase font-bold tracking-widest">Bridging Monetag Network...</p>
+                    <h3 className="text-white font-black text-xs uppercase tracking-[0.2em]">Preparing Content</h3>
+                    <p className="text-gray-500 text-[9px] mt-2 uppercase font-bold tracking-widest">Validating Reward Session...</p>
                   </div>
               </div>
           )}
@@ -139,14 +82,15 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
                       <ShieldAlert className="text-blue-500" size={32} />
                   </div>
                   <div>
-                    <h3 className="text-white font-black text-sm uppercase tracking-widest">Ad Active</h3>
-                    <p className="text-gray-500 text-[10px] mt-2 font-medium">Please view the content to unlock your reward.</p>
+                    <h3 className="text-white font-black text-sm uppercase tracking-widest">Reward Unlocking</h3>
+                    <p className="text-gray-500 text-[10px] mt-2 font-medium px-4">The ad has opened in a new tab. Complete it to claim your points.</p>
                   </div>
-                  {type === 'DIRECT' && (
-                      <p className="text-blue-400 text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1">
-                          <ExternalLink size={10} /> Check New Window
-                      </p>
-                  )}
+                  <p className="text-blue-400 text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-1">
+                      <ExternalLink size={10} /> Link Active
+                  </p>
+                  <div className="w-full bg-white/5 h-1 rounded-full overflow-hidden">
+                      <div className="h-full bg-blue-600 animate-[shimmer_2s_infinite] w-full"></div>
+                  </div>
               </div>
           )}
 
@@ -157,7 +101,7 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
                   </div>
                   <p className="text-red-400 text-[10px] font-black uppercase tracking-widest leading-relaxed">
                     {errorMsg}<br/>
-                    <span className="text-gray-600">Auto-skipping to prevent hang...</span>
+                    <span className="text-gray-600">Auto-crediting to prevent disruption...</span>
                   </p>
               </div>
           )}
@@ -166,9 +110,15 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
             onClick={onComplete}
             className="mt-8 text-gray-700 hover:text-gray-400 text-[9px] font-black uppercase tracking-[0.3em] transition-colors"
           >
-              Close & Continue
+              Skip & Continue
           </button>
       </div>
+      <style>{`
+        @keyframes shimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+      `}</style>
     </div>
   );
 };

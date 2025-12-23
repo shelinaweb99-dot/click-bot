@@ -5,6 +5,7 @@ const API_URL = '/api';
 
 // --- PERFORMANCE CACHE ---
 const _cache: Record<string, { data: any, timestamp: number }> = {};
+const _pendingRequests: Record<string, Promise<any>> = {};
 const CACHE_TTL = 30000; // 30 seconds for volatile data
 
 const getCached = (key: string) => {
@@ -30,53 +31,64 @@ const clearAuth = () => {
 
 const apiCall = async (action: string, data: any = {}, useCache = false) => {
     const cacheKey = `${action}_${JSON.stringify(data)}`;
+    
     if (useCache) {
         const cached = getCached(cacheKey);
         if (cached) return cached;
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); 
-    try {
-        const token = getAuthToken();
-        const tgData = (window as any).Telegram?.WebApp?.initData || '';
-        
-        const res = await fetch(API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': token ? `Bearer ${token}` : '',
-                'X-Telegram-Init-Data': tgData 
-            },
-            body: JSON.stringify({ action, ...data }),
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        
-        const json = await res.json();
-        if (!res.ok) {
-            if (res.status === 401) { 
-                clearAuth(); 
-                if (!window.location.hash.includes('login')) window.location.hash = '#/login'; 
-            }
-            throw new Error(json.message || `Server Error ${res.status}`);
-        }
-        
-        if (useCache) setCache(cacheKey, json);
-        return json;
-    } catch (e: any) {
-        clearTimeout(timeoutId);
-        if (e.name === 'AbortError') throw new Error("Connection timed out. Please check your internet or retry.");
-        throw e;
+    // Deduplicate concurrent requests for the same action/data
+    if (_pendingRequests[cacheKey]) {
+        return _pendingRequests[cacheKey];
     }
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // Reduced timeout to 15s
+    
+    const requestPromise = (async () => {
+        try {
+            const token = getAuthToken();
+            const tgData = (window as any).Telegram?.WebApp?.initData || '';
+            
+            const res = await fetch(API_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': token ? `Bearer ${token}` : '',
+                    'X-Telegram-Init-Data': tgData 
+                },
+                body: JSON.stringify({ action, ...data }),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            
+            const json = await res.json();
+            if (!res.ok) {
+                if (res.status === 401) { 
+                    clearAuth(); 
+                    if (!window.location.hash.includes('login')) window.location.hash = '#/login'; 
+                }
+                throw new Error(json.message || `Server Error ${res.status}`);
+            }
+            
+            if (useCache) setCache(cacheKey, json);
+            return json;
+        } catch (e: any) {
+            clearTimeout(timeoutId);
+            if (e.name === 'AbortError') throw new Error("Connection timed out. Please check your internet or retry.");
+            throw e;
+        } finally {
+            delete _pendingRequests[cacheKey];
+        }
+    })();
+
+    _pendingRequests[cacheKey] = requestPromise;
+    return requestPromise;
 };
 
-// Background pre-warmer
+// Background pre-warmer - Removed the eager fetching to prevent request storms on load
 export const initMockData = () => {
-    if (getAuthToken()) {
-        getUserById(getUserId() || '');
-        getTasks();
-    }
+    // We let components fetch their own data on mount to avoid initial request bursts
 };
 
 export const loginUser = async (email: string, password: string) => {

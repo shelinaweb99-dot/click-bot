@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getAdSettings, saveAdSettings, subscribeToChanges } from '../../services/mockDb';
 import { AdSettings, AdProvider, AdLink, RotationMode, AdRotationConfig } from '../../types';
-import { DEFAULT_MONETAG_SCRIPT } from '../../components/AdSimulator';
 import { 
   MonitorPlay, 
   Save, 
@@ -18,7 +17,8 @@ import {
   Info,
   ShieldCheck,
   Link as LinkIcon,
-  RotateCcw
+  RotateCcw,
+  ExternalLink
 } from 'lucide-react';
 
 export const AdminAds: React.FC = () => {
@@ -29,7 +29,6 @@ export const AdminAds: React.FC = () => {
 
   // For New Ad Link
   const [newUrl, setNewUrl] = useState('');
-  const [newProvider, setNewProvider] = useState<'MONETAG' | 'ADSTERRA'>('MONETAG');
 
   const defaultRotation: AdRotationConfig = {
     isEnabled: false,
@@ -45,9 +44,6 @@ export const AdminAds: React.FC = () => {
     monetagDirectLink: '',
     monetagAdTag: '',
     monetagZoneId: '',
-    monetagRewardedInterstitialId: '',
-    monetagRewardedPopupId: '',
-    monetagInterstitialId: '',
     adsterraLink: '',
     rotation: defaultRotation
   };
@@ -108,7 +104,7 @@ export const AdminAds: React.FC = () => {
     const newLink: AdLink = {
       id: 'link_' + Date.now(),
       url: newUrl,
-      provider: newProvider,
+      provider: 'MONETAG',
       isEnabled: true,
       clicks: 0
     };
@@ -153,7 +149,7 @@ export const AdminAds: React.FC = () => {
             </div>
             <h1 className="text-4xl font-black text-white tracking-tighter">Ads Center</h1>
           </div>
-          <p className="text-gray-500 font-bold uppercase text-[10px] tracking-[0.2em] ml-1">Monetization Node Management</p>
+          <p className="text-gray-500 font-bold uppercase text-[10px] tracking-[0.2em] ml-1">Direct Link Management</p>
         </div>
         <button 
           onClick={handleSave}
@@ -166,46 +162,31 @@ export const AdminAds: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Section 1: Telegram SDK (Zone IDs) */}
+        {/* Section 1: Primary Link */}
         <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl space-y-8">
           <div className="flex items-center gap-3">
-             <div className="bg-indigo-500/10 p-2 rounded-lg text-indigo-500 border border-indigo-500/10">
-                <Layout size={20} />
+             <div className="bg-blue-500/10 p-2 rounded-lg text-blue-500 border border-blue-500/10">
+                <ExternalLink size={20} />
              </div>
-             <h2 className="text-xl font-black text-white tracking-tight uppercase">Telegram SDK Ads</h2>
+             <h2 className="text-xl font-black text-white tracking-tight uppercase">Primary Direct Link</h2>
           </div>
 
-          <div className="space-y-6">
-             <div className="space-y-2.5">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Rewarded Interstitial (Main)</label>
-                <input 
-                   type="text" 
-                   className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
-                   placeholder="Zone ID (e.g. 8621458)"
-                   value={settings.monetagRewardedInterstitialId || ''}
-                   onChange={e => setSettings({ ...settings, monetagRewardedInterstitialId: e.target.value })}
-                />
-             </div>
-             <div className="space-y-2.5">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Rewarded Popup ID</label>
-                <input 
-                   type="text" 
-                   className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
-                   placeholder="Zone ID"
-                   value={settings.monetagRewardedPopupId || ''}
-                   onChange={e => setSettings({ ...settings, monetagRewardedPopupId: e.target.value })}
-                />
-             </div>
-             <div className="space-y-2.5">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Standard Interstitial ID</label>
-                <input 
-                   type="text" 
-                   className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner transition-all"
-                   placeholder="Zone ID"
-                   value={settings.monetagInterstitialId || ''}
-                   onChange={e => setSettings({ ...settings, monetagInterstitialId: e.target.value })}
-                />
-             </div>
+          <div className="bg-blue-500/5 p-5 rounded-2xl border border-blue-500/10 flex gap-4 items-start">
+              <Info className="text-blue-500 shrink-0" size={20} />
+              <p className="text-gray-400 text-[11px] leading-relaxed">
+                  This link is used as the global fallback if ad rotation is disabled. Paste your <strong>Monetag Direct Link</strong> URL here.
+              </p>
+          </div>
+
+          <div className="space-y-2.5">
+             <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Monetag Direct Link URL</label>
+             <input 
+                type="text" 
+                className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-[10px] shadow-inner transition-all"
+                placeholder="https://alwingulla.com/..."
+                value={settings.monetagDirectLink || ''}
+                onChange={e => setSettings({ ...settings, monetagDirectLink: e.target.value })}
+             />
           </div>
         </div>
 
@@ -235,7 +216,7 @@ export const AdminAds: React.FC = () => {
                       <div className="flex gap-2">
                         <input 
                             type="text" 
-                            placeholder="Direct Link URL..." 
+                            placeholder="Add another ad link..." 
                             className="flex-1 bg-gray-900 border border-white/5 text-white p-4 rounded-xl text-xs outline-none focus:border-purple-500"
                             value={newUrl}
                             onChange={e => setNewUrl(e.target.value)}
@@ -253,7 +234,7 @@ export const AdminAds: React.FC = () => {
                             value={settings.rotation.mode}
                             onChange={e => setSettings({ ...settings, rotation: { ...settings.rotation!, mode: e.target.value as RotationMode }})}
                         >
-                            <option value="SERIAL">Serial (One by One)</option>
+                            <option value="SERIAL">Serial (Iterate List)</option>
                             <option value="RANDOM">Random Selection</option>
                         </select>
                       </div>
@@ -280,47 +261,12 @@ export const AdminAds: React.FC = () => {
                </div>
            )}
         </div>
-
-        {/* Global Configuration */}
-        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl lg:col-span-2 space-y-8">
-          <div className="flex items-center gap-3">
-             <div className="bg-yellow-500/10 p-2 rounded-lg text-yellow-500 border border-yellow-500/10">
-                <Zap size={20} />
-             </div>
-             <h2 className="text-xl font-black text-white tracking-tight uppercase">Global SDK & Tags</h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-             <div className="space-y-2.5">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Universal Tag (SDK Script URL)</label>
-                <input 
-                   type="text" 
-                   className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-yellow-500/50 outline-none font-mono text-[10px] shadow-inner transition-all"
-                   placeholder="https://alwingulla.com/script/suv4.js"
-                   value={settings.monetagAdTag || ''}
-                   onChange={e => setSettings({ ...settings, monetagAdTag: e.target.value })}
-                />
-                <p className="text-gray-600 text-[9px] font-bold italic ml-1">Default: {DEFAULT_MONETAG_SCRIPT}</p>
-             </div>
-             
-             <div className="space-y-2.5">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Primary Fallback Zone ID</label>
-                <input 
-                   type="text" 
-                   className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-yellow-500/50 outline-none font-mono text-xs shadow-inner transition-all"
-                   placeholder="General Zone ID"
-                   value={settings.monetagZoneId || ''}
-                   onChange={e => setSettings({ ...settings, monetagZoneId: e.target.value })}
-                />
-             </div>
-          </div>
-        </div>
       </div>
       
       <div className="bg-blue-600/5 p-10 rounded-[3rem] border border-blue-500/10 text-center">
           <ShieldCheck size={40} className="text-blue-500 mx-auto mb-4" />
           <p className="text-gray-500 text-[11px] font-black uppercase tracking-widest leading-relaxed">
-              Advertising Node Synchronized &bull; Multi-Mode Active
+              Monetization Node Synchronized &bull; 2025 Authority
           </p>
       </div>
     </div>
