@@ -32,7 +32,8 @@ export interface WithdrawalMethod {
 
 export enum AdProvider {
   MONETAG = 'MONETAG',
-  ADSTERRA = 'ADSTERRA'
+  ADSTERRA = 'ADSTERRA',
+  ROTATION = 'ROTATION'
 }
 
 export type RotationMode = 'SERIAL' | 'RANDOM';
@@ -59,14 +60,6 @@ export type MonetagAdType = 'REWARDED_INTERSTITIAL' | 'REWARDED_POPUP' | 'INTERS
 export interface AdSettings {
   activeProvider: AdProvider;
   monetagDirectLink: string;
-  monetagAdTag?: string;
-  monetagZoneId?: string; // Standard Tag
-  
-  // Telegram Mini App Specific IDs
-  monetagRewardedInterstitialId?: string;
-  monetagRewardedPopupId?: string;
-  monetagInterstitialId?: string;
-  
   adsterraLink: string;
   rotation?: AdRotationConfig;
 }
