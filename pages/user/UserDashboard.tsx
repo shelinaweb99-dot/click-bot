@@ -18,19 +18,20 @@ export const UserDashboard: React.FC = () => {
         const id = getCurrentUserId();
         if (!id) { navigate('/login'); return; }
         
-        if (!silent) setLoading(true);
+        // SWR Logic: Show cache immediately, then fetch updates
+        if (!silent && !user) setLoading(true);
         
         const [u, txs] = await Promise.all([
-            getUserById(id),
-            getTransactions(id)
+            getUserById(id, silent), // Pass silent as forceRefresh
+            getTransactions(id, silent)
         ]);
 
         if (!isMounted.current) return;
         
-        if (!u) { navigate('/login'); return; }
+        if (!u && !silent) { navigate('/login'); return; }
         
-        setUser(u);
-        setTransactions(txs.slice(0, 5));
+        if (u) setUser(u);
+        if (txs) setTransactions(txs.slice(0, 5));
         setLoading(false);
     } catch (e) {
         if (isMounted.current) setLoading(false);
@@ -39,7 +40,7 @@ export const UserDashboard: React.FC = () => {
 
   useEffect(() => {
     isMounted.current = true;
-    fetchData(); // Initial load
+    fetchData(); // Attempt immediate load from cache
     const unsubscribe = subscribeToChanges(() => {
         if (isMounted.current) fetchData(true); // Background refresh
     });
@@ -77,7 +78,7 @@ export const UserDashboard: React.FC = () => {
   );
 
   return (
-    <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-700 pb-10 max-w-full overflow-x-hidden">
+    <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-300 pb-10 max-w-full overflow-x-hidden">
       
       <button onClick={() => triggerHoneypot()} className="opacity-0 absolute pointer-events-auto h-0 w-0 overflow-hidden" aria-hidden="true" tabIndex={-1}>Admin Debug</button>
 
