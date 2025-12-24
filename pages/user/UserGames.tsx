@@ -1,55 +1,102 @@
 
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Gamepad2, Gift, Dices, Disc, ChevronRight } from 'lucide-react';
+import { 
+  Gamepad2, 
+  Gift, 
+  Dices, 
+  Disc, 
+  ChevronRight, 
+  Plus, 
+  Minus,
+  Trophy,
+  Settings
+} from 'lucide-react';
 
 export const UserGames: React.FC = () => {
   const games = [
-    { id: 'spin', name: 'Spin & Win', icon: <Disc size={32} />, color: 'from-purple-600 to-indigo-700', link: '/games/spin', desc: 'Test your luck' },
-    { id: 'scratch', name: 'Lucky Reveal', icon: <Gift size={32} />, color: 'from-emerald-600 to-teal-700', link: '/games/scratch', desc: 'Instant rewards' },
-    { id: 'guess', name: 'Vault Breaker', icon: <Dices size={32} />, color: 'from-orange-600 to-red-700', link: '/games/guess', desc: 'Crack the code' },
-    { id: 'lottery', name: 'Treasure Box', icon: <Gamepad2 size={32} />, color: 'from-blue-600 to-cyan-700', link: '/games/lottery', desc: 'Pick a winner' },
+    { 
+      id: 'spin', 
+      name: 'Spin & Win', 
+      desc: 'TEST YOUR LUCK',
+      icon: <Disc size={32} />, 
+      color: 'from-[#8b5cf6] to-[#4f46e5]', 
+      link: '/games/spin' 
+    },
+    { 
+      id: 'scratch', 
+      name: 'Lucky Reveal', 
+      desc: 'INSTANT REWARDS',
+      icon: <Gift size={32} />, 
+      color: 'from-[#10b981] to-[#047857]', 
+      link: '/games/scratch',
+      decoration: (
+        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex flex-col gap-3">
+          <div className="bg-white/90 p-1.5 rounded-full text-[#10b981] shadow-lg"><Plus size={20} strokeWidth={3} /></div>
+          <div className="bg-white/90 p-1.5 rounded-full text-[#10b981] shadow-lg"><Minus size={20} strokeWidth={3} /></div>
+        </div>
+      )
+    },
+    { 
+      id: 'guess', 
+      name: 'Vault Breaker', 
+      desc: 'CRACK THE CODE',
+      icon: <Dices size={32} />, 
+      color: 'from-[#f97316] to-[#dc2626]', 
+      link: '/games/guess',
+      decoration: (
+        <div className="absolute right-6 top-1/2 -translate-y-1/2">
+           <div className="bg-white/20 p-3 rounded-full backdrop-blur-md border border-white/20">
+             <ChevronRight size={24} className="text-white" />
+           </div>
+        </div>
+      )
+    },
+    { 
+      id: 'lottery', 
+      name: 'Treasure Box', 
+      desc: 'PICK A WINNER',
+      icon: <Gamepad2 size={32} />, 
+      color: 'from-[#2563eb] to-[#0891b2]', 
+      link: '/games/lottery' 
+    },
   ];
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-        <div className="flex flex-col gap-1 px-1">
-            <h1 className="text-3xl font-black text-white flex items-center gap-3">
-                <Gamepad2 className="text-blue-500" size={32} /> Game Center
-            </h1>
-            <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.2em]">Play & Earn Extra USDT-Pts</p>
+    <div className="h-[calc(100vh-140px)] flex flex-col gap-3 animate-in fade-in duration-500 overflow-hidden">
+        {/* Navigation / Header mimic from screenshot */}
+        <div className="flex justify-between items-center px-2 py-1 shrink-0">
+          <Trophy className="text-yellow-500" size={24} />
+          <h1 className="text-xs font-black text-white uppercase tracking-[0.2em]">CLICK TO EARN USDT</h1>
+          <Settings className="text-gray-500" size={24} />
         </div>
 
-        <div className="grid grid-cols-1 gap-4">
+        {/* Game Cards List */}
+        <div className="flex-1 flex flex-col gap-3 min-h-0">
             {games.map(game => (
                 <Link 
                   to={game.link} 
                   key={game.id} 
-                  className={`bg-gradient-to-r ${game.color} p-6 rounded-[2rem] text-white shadow-xl shadow-black/20 transform transition-all active:scale-95 flex items-center justify-between group relative overflow-hidden`}
+                  className={`flex-1 min-h-[90px] bg-gradient-to-r ${game.color} rounded-[2.5rem] text-white shadow-xl shadow-black/30 transform transition-all active:scale-[0.98] flex items-center relative overflow-hidden px-8 group`}
                 >
-                    <div className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-125 transition-transform duration-700">
+                    {/* Icon Box */}
+                    <div className="bg-white/20 p-5 rounded-[2rem] backdrop-blur-md border border-white/10 shrink-0 group-hover:scale-105 transition-transform duration-300">
                         {game.icon}
                     </div>
-                    <div className="flex items-center gap-5">
-                        <div className="bg-white/20 p-4 rounded-2xl backdrop-blur-md border border-white/10 group-hover:rotate-12 transition-transform">
-                            {game.icon}
-                        </div>
-                        <div>
-                            <span className="font-black text-xl tracking-tight block">{game.name}</span>
-                            <span className="text-[10px] font-bold text-white/60 uppercase tracking-widest">{game.desc}</span>
-                        </div>
+
+                    {/* Text Content */}
+                    <div className="ml-6 flex-1">
+                        <h2 className="font-black text-2xl tracking-tight leading-none mb-1">{game.name}</h2>
+                        <p className="text-[10px] font-black text-white/50 uppercase tracking-[0.2em]">{game.desc}</p>
                     </div>
-                    <div className="bg-white/20 p-2 rounded-full backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity">
-                        <ChevronRight size={20} />
-                    </div>
+
+                    {/* Decorative Elements */}
+                    {game.decoration}
+                    
+                    {/* Background Shine */}
+                    <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/5 to-white/0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
                 </Link>
             ))}
-        </div>
-        
-        <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5 text-center">
-            <p className="text-gray-600 text-[9px] font-black uppercase tracking-widest leading-relaxed">
-                Gaming rewards are added to your balance instantly. <br/>Daily limits apply to ensure fair play.
-            </p>
         </div>
     </div>
   );
