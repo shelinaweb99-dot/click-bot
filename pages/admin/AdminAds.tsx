@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getAdSettings, saveAdSettings, subscribeToChanges } from '../../services/mockDb';
 import { AdSettings, AdProvider, AdLink, RotationMode } from '../../types';
+import { DEFAULT_MONETAG_SCRIPT } from '../../components/AdSimulator';
 import { 
   MonitorPlay, 
   Save, 
@@ -13,7 +14,7 @@ import {
   Zap,
   Link as LinkIcon,
   Info,
-  ExternalLink,
+  Layout,
   Target
 } from 'lucide-react';
 
@@ -26,6 +27,11 @@ export const AdminAds: React.FC = () => {
   const defaultAdSettings: AdSettings = {
     activeProvider: AdProvider.MONETAG,
     monetagDirectLink: '',
+    monetagAdTag: '',
+    monetagZoneId: '',
+    monetagRewardedInterstitialId: '',
+    monetagRewardedPopupId: '',
+    monetagInterstitialId: '',
     adsterraLink: '',
     rotation: {
         isEnabled: false,
@@ -73,7 +79,7 @@ export const AdminAds: React.FC = () => {
     setIsSaving(true);
     try {
       await saveAdSettings(settings);
-      alert("Success: Direct Link protocols synchronized.");
+      alert("Success: Monetization protocols synchronized.");
     } catch (e) {
       alert("Error: Failed to update ad settings.");
     } finally {
@@ -110,9 +116,9 @@ export const AdminAds: React.FC = () => {
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-4xl font-black text-white tracking-tighter flex items-center gap-3">
-             <MonitorPlay size={32} className="text-blue-500" /> Direct Ads
+             <MonitorPlay size={32} className="text-blue-500" /> Ad Center
           </h1>
-          <p className="text-gray-500 font-bold uppercase text-[10px] tracking-widest mt-2">Direct Link Management</p>
+          <p className="text-gray-500 font-bold uppercase text-[10px] tracking-widest mt-2">Monetag & SDK Configuration</p>
         </div>
         <button 
           onClick={handleSave} 
@@ -126,79 +132,85 @@ export const AdminAds: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
-        {/* Main Provider Selection */}
-        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl space-y-8 lg:col-span-2">
+        {/* Telegram SDK Mode */}
+        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl space-y-8">
             <div className="flex items-center gap-3">
-                <div className="bg-blue-500/10 p-2 rounded-lg text-blue-500 border border-blue-500/10">
-                    <Target size={20} />
+                <div className="bg-indigo-500/10 p-2 rounded-lg text-indigo-500 border border-indigo-500/10">
+                    <Layout size={20} />
                 </div>
-                <h2 className="text-xl font-black text-white uppercase tracking-tight">Active Earning Gateway</h2>
+                <h2 className="text-xl font-black text-white uppercase tracking-tight">Telegram SDK Ads</h2>
             </div>
             
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {[
-                    { id: AdProvider.MONETAG, label: 'Monetag Direct' },
-                    { id: AdProvider.ADSTERRA, label: 'Adsterra Direct' },
-                    { id: AdProvider.ROTATION, label: 'Dynamic Rotation' },
-                ].map(p => (
-                    <button 
-                        key={p.id}
-                        onClick={() => setSettings({...settings, activeProvider: p.id})}
-                        className={`p-6 rounded-2xl font-black text-[10px] uppercase tracking-widest border transition-all ${settings.activeProvider === p.id ? 'bg-blue-600 border-blue-400 text-white shadow-xl shadow-blue-900/40' : 'bg-[#0b1120] border-white/5 text-gray-500 hover:text-white'}`}
-                    >
-                        {p.label}
-                    </button>
-                ))}
+            <div className="space-y-6">
+                <div className="space-y-2">
+                    <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Rewarded Interstitial Zone ID</label>
+                    <input 
+                        type="text" 
+                        className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner"
+                        placeholder="e.g. 8621458"
+                        value={settings.monetagRewardedInterstitialId || ''}
+                        onChange={e => setSettings({ ...settings, monetagRewardedInterstitialId: e.target.value })}
+                    />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Rewarded Popup Zone ID</label>
+                    <input 
+                        type="text" 
+                        className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner"
+                        placeholder="e.g. 8621459"
+                        value={settings.monetagRewardedPopupId || ''}
+                        onChange={e => setSettings({ ...settings, monetagRewardedPopupId: e.target.value })}
+                    />
+                </div>
             </div>
         </div>
 
-        {/* Monetag Section */}
-        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl space-y-6">
-            <h2 className="text-lg font-black text-white uppercase tracking-tight flex items-center gap-2">
-                Monetag Direct
-            </h2>
-            <div className="space-y-2">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Direct Link URL</label>
-                <input 
-                    type="text" 
-                    className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-[10px]"
-                    placeholder="https://monetag.com/..."
-                    value={settings.monetagDirectLink || ''}
-                    onChange={e => setSettings({ ...settings, monetagDirectLink: e.target.value })}
-                />
+        {/* Global Fallback & Tags */}
+        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl space-y-8">
+            <div className="flex items-center gap-3">
+                <div className="bg-yellow-500/10 p-2 rounded-lg text-yellow-500 border border-yellow-500/10">
+                    <Zap size={20} />
+                </div>
+                <h2 className="text-xl font-black text-white uppercase tracking-tight">Global SDK & Tags</h2>
+            </div>
+            
+            <div className="space-y-6">
+                <div className="space-y-2">
+                    <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">SDK Script URL</label>
+                    <input 
+                        type="text" 
+                        className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-[10px] shadow-inner"
+                        placeholder={DEFAULT_MONETAG_SCRIPT}
+                        value={settings.monetagAdTag || ''}
+                        onChange={e => setSettings({ ...settings, monetagAdTag: e.target.value })}
+                    />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">General Fallback Zone ID</label>
+                    <input 
+                        type="text" 
+                        className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-xs shadow-inner"
+                        placeholder="Primary Zone ID"
+                        value={settings.monetagZoneId || ''}
+                        onChange={e => setSettings({ ...settings, monetagZoneId: e.target.value })}
+                    />
+                </div>
             </div>
         </div>
 
-        {/* Adsterra Section */}
-        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl space-y-6">
-            <h2 className="text-lg font-black text-white uppercase tracking-tight flex items-center gap-2">
-                Adsterra Direct
-            </h2>
-            <div className="space-y-2">
-                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Direct Link URL</label>
-                <input 
-                    type="text" 
-                    className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-blue-500/50 outline-none font-mono text-[10px]"
-                    placeholder="https://adsterra.com/..."
-                    value={settings.adsterraLink || ''}
-                    onChange={e => setSettings({ ...settings, adsterraLink: e.target.value })}
-                />
-            </div>
-        </div>
-
-        {/* Dynamic Rotation Section */}
+        {/* Dynamic Direct Links (Auto-Open Mode) */}
         <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl lg:col-span-2 space-y-8">
            <div className="flex items-center gap-3">
                 <div className="bg-purple-500/10 p-2 rounded-lg text-purple-500 border border-purple-500/10">
-                <RotateCcw size={20} />
+                    <RotateCcw size={20} />
                 </div>
-                <h2 className="text-xl font-black text-white uppercase tracking-tight">Dynamic Ad Rotation</h2>
+                <h2 className="text-xl font-black text-white uppercase tracking-tight">Auto-Open Direct Links</h2>
            </div>
 
            <div className="bg-purple-500/5 p-4 rounded-2xl border border-purple-500/10 flex gap-3">
               <Info className="text-purple-500 shrink-0" size={18} />
               <p className="text-gray-400 text-[10px] leading-relaxed">
-                 Use rotation to cycle through multiple different direct links to maximize revenue and stay fresh.
+                 Direct Links will open **automatically** without any buttons when triggered by the system (e.g. after 10 videos).
               </p>
            </div>
 
@@ -206,8 +218,8 @@ export const AdminAds: React.FC = () => {
                 <div className="flex gap-2">
                 <input 
                     type="text" 
-                    placeholder="Paste additional sponsor link..." 
-                    className="flex-1 bg-[#0b1120] border border-white/5 text-white p-4 rounded-xl text-[10px] outline-none focus:border-purple-500/50 font-mono"
+                    placeholder="Paste direct sponsor link URL..." 
+                    className="flex-1 bg-[#0b1120] border border-white/5 text-white p-4 rounded-xl text-[10px] outline-none focus:border-purple-500/50 font-mono shadow-inner"
                     value={newUrl}
                     onChange={e => setNewUrl(e.target.value)}
                 />
@@ -216,7 +228,7 @@ export const AdminAds: React.FC = () => {
                 </button>
                 </div>
                 
-                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 no-scrollbar">
+                <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 no-scrollbar">
                     {settings.rotation?.links?.map(link => (
                         <div key={link.id} className="flex justify-between items-center bg-[#030712] p-4 rounded-2xl border border-white/5 group">
                             <div className="flex items-center gap-3 min-w-0">
@@ -236,7 +248,7 @@ export const AdminAds: React.FC = () => {
       <div className="bg-blue-600/5 p-10 rounded-[3rem] border border-blue-500/10 text-center">
           <ShieldCheck size={40} className="text-blue-500 mx-auto mb-4 opacity-40" />
           <p className="text-gray-500 text-[11px] font-black uppercase tracking-widest leading-relaxed">
-              Direct Link Protocols Verified &bull; System Active
+              Monetization Protocols Verified &bull; System Active
           </p>
       </div>
     </div>

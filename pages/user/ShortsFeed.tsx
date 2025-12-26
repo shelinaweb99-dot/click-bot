@@ -49,22 +49,16 @@ export const ShortsFeed: React.FC = () => {
         
         if (!isMountedRef.current) return;
 
-        // --- 24-HOUR COOLDOWN FILTER ---
-        // We filter out videos that were watched in the last 24 hours.
         const now = Date.now();
         const validVideos = allVideos.filter(video => {
             const history = u?.shortsData?.lastWatched;
-            // Handle both Map and plain object cases from MongoDB/API
             const lastWatchedStr = (history instanceof Map) 
                 ? history.get(video.id) 
                 : (history ? (history as any)[video.id] : null);
             
             if (!lastWatchedStr) return true;
-            
             const lastWatchedTime = new Date(lastWatchedStr).getTime();
             const diffHours = (now - lastWatchedTime) / (1000 * 60 * 60);
-            
-            // If watched more than 24 hours ago, it's available again
             return diffHours >= 24; 
         });
 
@@ -120,13 +114,11 @@ export const ShortsFeed: React.FC = () => {
     }
 
     setCurrentVideoStatus('IDLE');
-    
     const timer = setTimeout(() => {
         if (isMountedRef.current && videos[activeIndex]) {
             handleManualPlay(videos[activeIndex].id);
         }
     }, 400); 
-    
     return () => clearTimeout(timer);
   }, [activeIndex, videos]);
 
@@ -174,26 +166,21 @@ export const ShortsFeed: React.FC = () => {
               setCurrentVideoStatus('COMPLETED');
               
               const newWatchedTodayCount = (userShortsData?.watchedTodayCount || 0) + 1;
-              
               setUserShortsData(prev => ({
                   ...prev!,
                   watchedTodayCount: newWatchedTodayCount
               }));
 
-              // Check if we should show an ad
+              // AUTOMATIC DIRECT LINK AD TRIGGER
               if (settings && newWatchedTodayCount > 0 && newWatchedTodayCount % settings.adFrequency === 0) {
                    setTimeout(() => {
                        if (isMountedRef.current) setShowAd(true);
-                   }, 1500); 
+                   }, 1000); 
               }
 
-              // AUTOMATIC COOLDOWN LOCK:
-              // After a short delay to let the user see the "Earned" badge, 
-              // we remove the video from the feed to respect the "can't watch again" rule.
               setTimeout(() => {
                   if (isMountedRef.current) {
                       setVideos(prev => prev.filter(v => v.id !== videoId));
-                      // Note: activeIndex will point to the next video naturally as the array shifts
                   }
               }, 2000);
           }
@@ -308,7 +295,8 @@ export const ShortsFeed: React.FC = () => {
                                     
                                     {currentVideoStatus === 'COMPLETED' ? (
                                         <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg animate-in zoom-in">
-                                            <CheckCircle size={14} /> +{settings.pointsPerVideo} Pts Claimed
+                                            <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                                            +{settings.pointsPerVideo} Pts Claimed
                                         </div>
                                     ) : (
                                         <div className="mt-5 w-full max-w-[200px] h-1.5 bg-gray-800 rounded-full overflow-hidden">
@@ -332,7 +320,14 @@ export const ShortsFeed: React.FC = () => {
             })}
         </div>
 
-        {adSettings && <AdSimulator isOpen={showAd} onComplete={onAdComplete} settings={adSettings} />}
+        {adSettings && (
+            <AdSimulator 
+                isOpen={showAd} 
+                onComplete={onAdComplete} 
+                settings={adSettings} 
+                type="DIRECT" 
+            />
+        )}
     </div>
   );
 };

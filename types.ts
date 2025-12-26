@@ -60,6 +60,11 @@ export type MonetagAdType = 'REWARDED_INTERSTITIAL' | 'REWARDED_POPUP' | 'INTERS
 export interface AdSettings {
   activeProvider: AdProvider;
   monetagDirectLink: string;
+  monetagAdTag?: string;
+  monetagZoneId?: string;
+  monetagRewardedInterstitialId?: string;
+  monetagRewardedPopupId?: string;
+  monetagInterstitialId?: string;
   adsterraLink: string;
   rotation?: AdRotationConfig;
 }
