@@ -8,7 +8,8 @@ export enum TaskType {
   YOUTUBE = 'YOUTUBE',
   WEBSITE = 'WEBSITE',
   CUSTOM = 'CUSTOM',
-  TELEGRAM = 'TELEGRAM'
+  TELEGRAM = 'TELEGRAM',
+  SHORTLINK = 'SHORTLINK'
 }
 
 export enum TaskStatus {
@@ -168,6 +169,8 @@ export interface Task {
   totalLimit: number;
   completedCount: number;
   status: TaskStatus;
+  fileUrl?: string; // New: Protected file download link
+  fileTitle?: string; // New: Display name for the file
 }
 
 export interface WithdrawalRequest {

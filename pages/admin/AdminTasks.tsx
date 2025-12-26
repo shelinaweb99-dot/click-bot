@@ -2,22 +2,23 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Task, TaskType, TaskStatus } from '../../types';
 import { getTasks, saveTask, deleteTask, subscribeToChanges } from '../../services/mockDb';
-import { Trash2, Edit, Plus, Video, Globe, FileText, Send, AlertCircle } from 'lucide-react';
+import { Trash2, Edit, Plus, Video, Globe, FileText, Send, AlertCircle, Link as LinkIcon, Lock } from 'lucide-react';
 
 export const AdminTasks: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   
-  // Form State
   const [currentId, setCurrentId] = useState('');
   const [title, setTitle] = useState('');
   const [type, setType] = useState<TaskType>(TaskType.YOUTUBE);
   const [reward, setReward] = useState(0);
   const [url, setUrl] = useState('');
-  const [channelUsername, setChannelUsername] = useState(''); // New field for Telegram
+  const [channelUsername, setChannelUsername] = useState('');
   const [duration, setDuration] = useState(30);
   const [limit, setLimit] = useState(100);
   const [instructions, setInstructions] = useState('');
+  const [fileUrl, setFileUrl] = useState('');
+  const [fileTitle, setFileTitle] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const isMounted = useRef(true);
 
@@ -52,6 +53,8 @@ export const AdminTasks: React.FC = () => {
     setDuration(30);
     setLimit(100);
     setInstructions('');
+    setFileUrl('');
+    setFileTitle('');
     setIsEditing(false);
     setIsSaving(false);
   };
@@ -61,91 +64,39 @@ export const AdminTasks: React.FC = () => {
     setIsSaving(true);
     
     try {
-        // If editing, try to find existing task to preserve counts
         const existingTask = currentId ? tasks.find(t => t.id === currentId) : null;
-
-        // Auto-generate URL for Telegram type if missing or malformed
         let finalUrl = url;
-        let finalChannelUsername = channelUsername;
 
-        // --- Telegram Formatting ---
-        if (type === TaskType.TELEGRAM && channelUsername) {
-            let cleanUser = channelUsername.trim();
-            // Remove full URL if pasted
-            if (cleanUser.startsWith('https://t.me/')) {
-                cleanUser = cleanUser.replace('https://t.me/', '');
-            }
-            
-            // Logic: 
-            // 1. If it starts with -100 (Numeric Channel ID), keep it as is.
-            // 2. If it starts with @, keep it as is.
-            // 3. If it's alphanumeric without @, add @.
-            
-            if (cleanUser.startsWith('-100')) {
-               finalChannelUsername = cleanUser;
-               // Ensure URL is provided for private channels
-               if (!url || url === '#' || url.length < 5) {
-                   alert("For Private Channels (ID starting with -100), you MUST provide a valid Invite Link in the URL field.");
-                   setIsSaving(false);
-                   return;
-               }
-            } else if (cleanUser.startsWith('@')) {
-               finalChannelUsername = cleanUser;
-            } else {
-               finalChannelUsername = `@${cleanUser}`;
-            }
-            
-            // Task URL for user click
-            if (finalChannelUsername.startsWith('@')) {
-                // For public usernames, we can auto-generate if URL is empty
-                if (!finalUrl) {
-                    finalUrl = `https://t.me/${finalChannelUsername.substring(1)}`;
-                }
-            }
-        }
-        
-        // --- YouTube Formatting (Auto-Convert to Embed) ---
         if (type === TaskType.YOUTUBE && finalUrl) {
-             let videoId = '';
-            // Standard watch URL: youtube.com/watch?v=VIDEO_ID
-            if (finalUrl.includes('v=')) {
-                videoId = finalUrl.split('v=')[1]?.split('&')[0];
-            } 
-            // Short URL: youtu.be/VIDEO_ID
-            else if (finalUrl.includes('youtu.be/')) {
-                videoId = finalUrl.split('youtu.be/')[1]?.split('?')[0];
-            }
-            // Shorts URL: youtube.com/shorts/VIDEO_ID
-            else if (finalUrl.includes('/shorts/')) {
-                videoId = finalUrl.split('/shorts/')[1]?.split('?')[0];
-            }
-            
-            if (videoId) {
-                finalUrl = `https://www.youtube.com/embed/${videoId}`;
-            }
+            let videoId = '';
+            if (finalUrl.includes('v=')) videoId = finalUrl.split('v=')[1]?.split('&')[0];
+            else if (finalUrl.includes('youtu.be/')) videoId = finalUrl.split('youtu.be/')[1]?.split('?')[0];
+            else if (finalUrl.includes('/shorts/')) videoId = finalUrl.split('/shorts/')[1]?.split('?')[0];
+            if (videoId) finalUrl = `https://www.youtube.com/embed/${videoId}`;
         }
 
         const newTask: Task = {
-            id: currentId || Date.now().toString(),
+            id: currentId || 't_' + Date.now(),
             title,
             type,
             reward,
             url: finalUrl,
-            channelUsername: type === TaskType.TELEGRAM ? finalChannelUsername : undefined,
+            channelUsername: type === TaskType.TELEGRAM ? channelUsername : undefined,
             durationSeconds: duration,
             totalLimit: limit,
-            // Preserve existing state if editing, otherwise defaults
             completedCount: existingTask ? existingTask.completedCount : 0, 
             status: existingTask ? existingTask.status : TaskStatus.ACTIVE,
-            // The service layer now handles sanitization of undefined values
-            instructions: type === TaskType.CUSTOM ? instructions : undefined
+            instructions: type === TaskType.CUSTOM ? instructions : undefined,
+            fileUrl: type === TaskType.SHORTLINK ? fileUrl : undefined,
+            fileTitle: type === TaskType.SHORTLINK ? fileTitle : undefined
         };
         
         await saveTask(newTask);
         if (isMounted.current) resetForm();
     } catch (error) {
-        console.error("Failed to save task:", error);
-        alert("Error saving task: " + (error as Error).message);
+        console.error(error);
+        alert("Error saving task.");
+    } finally {
         if (isMounted.current) setIsSaving(false);
     }
   };
@@ -161,6 +112,8 @@ export const AdminTasks: React.FC = () => {
     setDuration(task.durationSeconds);
     setLimit(task.totalLimit);
     setInstructions(task.instructions || '');
+    setFileUrl(task.fileUrl || '');
+    setFileTitle(task.fileTitle || '');
   };
 
   const handleDelete = async (id: string) => {
@@ -169,112 +122,87 @@ export const AdminTasks: React.FC = () => {
     }
   };
 
-  const getUrlPlaceholder = () => {
-    switch(type) {
-      case TaskType.YOUTUBE: return 'Paste any YouTube Link (Watch/Share/Shorts)';
-      case TaskType.TELEGRAM: return 'https://t.me/your_channel (Optional if Username provided)';
-      default: return 'https://...';
-    }
-  };
+  const postbackUrl = currentId ? `${window.location.origin}/api?action=postback&uid={uid}&tid=${currentId}` : 'Save task first to see Postback URL';
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-white">Task Management</h1>
+        <h1 className="text-2xl font-bold text-white uppercase tracking-tighter">Task Management</h1>
         <button 
             onClick={() => { resetForm(); setIsEditing(true); }}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium"
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl flex items-center gap-2 font-bold text-xs uppercase tracking-widest shadow-lg active:scale-95 transition-all"
         >
-            <Plus size={18} /> Add New Task
+            <Plus size={18} /> New Task
         </button>
       </div>
 
       {isEditing && (
-          <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 animate-in fade-in slide-in-from-top-4">
-              <h3 className="text-lg font-bold text-white mb-4">{currentId ? 'Edit Task' : 'Create Task'}</h3>
-              <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 animate-in fade-in slide-in-from-top-4 shadow-2xl">
+              <h3 className="text-xl font-black text-white mb-8 uppercase tracking-tight">{currentId ? 'Edit Resource' : 'Register New Mission'}</h3>
+              <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="md:col-span-2">
-                      <label className="text-gray-400 text-sm">Task Title</label>
-                      <input className="w-full bg-gray-700 text-white p-2 rounded mt-1" required value={title} onChange={e => setTitle(e.target.value)} />
+                      <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Task Title</label>
+                      <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1 focus:border-blue-500 outline-none" required value={title} onChange={e => setTitle(e.target.value)} />
                   </div>
                   <div>
-                      <label className="text-gray-400 text-sm">Type</label>
-                      <select className="w-full bg-gray-700 text-white p-2 rounded mt-1" value={type} onChange={e => setType(e.target.value as TaskType)}>
+                      <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Mission Type</label>
+                      <select className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1 focus:border-blue-500 outline-none" value={type} onChange={e => setType(e.target.value as TaskType)}>
                           <option value={TaskType.YOUTUBE}>YouTube Video</option>
                           <option value={TaskType.WEBSITE}>Website Visit</option>
                           <option value={TaskType.TELEGRAM}>Telegram Join</option>
+                          <option value={TaskType.SHORTLINK}>Shortlink + File</option>
                           <option value={TaskType.CUSTOM}>Custom Job</option>
                       </select>
                   </div>
                   <div>
-                      <label className="text-gray-400 text-sm">Reward Points</label>
-                      <input type="number" className="w-full bg-gray-700 text-white p-2 rounded mt-1" required value={reward} onChange={e => setReward(Number(e.target.value))} />
+                      <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Reward (Pts)</label>
+                      <input type="number" className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1 focus:border-blue-500 outline-none" required value={reward} onChange={e => setReward(Number(e.target.value))} />
                   </div>
 
-                  {type === TaskType.TELEGRAM ? (
-                       <div className="md:col-span-2 bg-blue-500/10 p-4 rounded-lg border border-blue-500/30">
-                           <div className="mb-4">
-                               <label className="text-blue-400 text-sm font-bold flex items-center gap-1">
-                                   <Send size={14} /> Telegram Channel Username OR ID
-                               </label>
-                               <input 
-                                    className="w-full bg-gray-700 text-white p-2 rounded mt-1 border border-blue-500/50" 
-                                    value={channelUsername} 
-                                    onChange={e => setChannelUsername(e.target.value)} 
-                                    placeholder="@yourchannel OR -100123456789"
-                                    required
-                               />
-                               <p className="text-xs text-gray-400 mt-1 flex items-start gap-1">
-                                   <AlertCircle size={12} className="mt-0.5" />
-                                   <span>For Private Channels, use the ID (starts with -100). The Bot MUST be an Admin.</span>
-                               </p>
-                           </div>
-                           
-                           <div>
-                                <label className="text-gray-400 text-sm">Invite Link</label>
-                                <input 
-                                    className="w-full bg-gray-700 text-white p-2 rounded mt-1" 
-                                    value={url} 
-                                    onChange={e => setUrl(e.target.value)} 
-                                    placeholder="https://t.me/+AbCdEfGh..." 
-                                />
-                                <p className="text-xs text-orange-400 mt-1">
-                                    Required for Private Channels (ID -100...). Optional for Public (@username).
-                                </p>
-                           </div>
-                       </div>
+                  {type === TaskType.SHORTLINK ? (
+                      <div className="md:col-span-2 space-y-6 p-6 bg-blue-500/5 rounded-3xl border border-blue-500/10">
+                          <div className="flex items-center gap-2 text-blue-400 font-black text-[10px] uppercase tracking-widest">
+                              <Lock size={14} /> Protected File Configuration
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                  <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">File Display Name</label>
+                                  <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={fileTitle} onChange={e => setFileTitle(e.target.value)} placeholder="e.g. MySecretFile.zip" />
+                              </div>
+                              <div>
+                                  <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Protected Download URL</label>
+                                  <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={fileUrl} onChange={e => setFileUrl(e.target.value)} placeholder="https://drive.google.com/..." />
+                              </div>
+                          </div>
+                          <div className="space-y-2">
+                               <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Shortlink URL</label>
+                               <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://gplinks.co/..." />
+                          </div>
+                          <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
+                              <label className="text-gray-500 text-[9px] font-black uppercase tracking-widest">Global Postback URL</label>
+                              <div className="flex items-center gap-2 mt-2">
+                                  <code className="bg-[#030712] p-3 rounded-lg text-blue-400 font-mono text-[10px] flex-1 break-all">{postbackUrl}</code>
+                                  <button type="button" onClick={() => navigator.clipboard.writeText(postbackUrl)} className="p-3 bg-white/5 rounded-xl hover:text-white transition-colors"><LinkIcon size={16} /></button>
+                              </div>
+                              <p className="text-[9px] text-gray-600 mt-2 italic">* Use {`{uid}`} and {`{tid}`} variables in your shortlink provider settings.</p>
+                          </div>
+                      </div>
                   ) : (
-                       <div className="md:col-span-2">
-                           <label className="text-gray-400 text-sm">URL / Link</label>
-                           <input className="w-full bg-gray-700 text-white p-2 rounded mt-1" value={url} onChange={e => setUrl(e.target.value)} placeholder={getUrlPlaceholder()} />
-                       </div>
-                  )}
-
-                  {type !== TaskType.CUSTOM && type !== TaskType.TELEGRAM && (
-                     <div>
-                        <label className="text-gray-400 text-sm">Duration (Seconds)</label>
-                        <input type="number" className="w-full bg-gray-700 text-white p-2 rounded mt-1" value={duration} onChange={e => setDuration(Number(e.target.value))} />
-                     </div>
-                  )}
-                  <div>
-                      <label className="text-gray-400 text-sm">Max Workers</label>
-                      <input type="number" className="w-full bg-gray-700 text-white p-2 rounded mt-1" value={limit} onChange={e => setLimit(Number(e.target.value))} />
-                  </div>
-                  {type === TaskType.CUSTOM && (
                       <div className="md:col-span-2">
-                          <label className="text-gray-400 text-sm">Instructions</label>
-                          <textarea className="w-full bg-gray-700 text-white p-2 rounded mt-1 h-24" value={instructions} onChange={e => setInstructions(e.target.value)} placeholder="What should the user do?" />
+                          <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Mission URL</label>
+                          <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1 focus:border-blue-500 outline-none" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://..." />
                       </div>
                   )}
-                  <div className="md:col-span-2 flex gap-2 mt-2">
+
+                  <div className="md:col-span-2 flex gap-4 mt-4">
                       <button 
                         type="submit" 
                         disabled={isSaving}
-                        className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-6 py-2 rounded"
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 text-white font-black text-xs uppercase tracking-widest py-5 rounded-[1.5rem] shadow-xl transition-all active:scale-95"
                       >
-                        {isSaving ? 'Saving...' : 'Save Task'}
+                        {isSaving ? 'Synchronizing...' : 'Commit Mission'}
                       </button>
-                      <button type="button" onClick={() => setIsEditing(false)} className="bg-gray-600 hover:bg-gray-500 text-white px-6 py-2 rounded">Cancel</button>
+                      <button type="button" onClick={() => setIsEditing(false)} className="px-8 bg-white/5 hover:bg-white/10 text-gray-500 hover:text-white py-5 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all">Cancel</button>
                   </div>
               </form>
           </div>
@@ -282,26 +210,30 @@ export const AdminTasks: React.FC = () => {
 
       <div className="grid gap-4">
           {tasks.map(task => (
-              <div key={task.id} className="bg-gray-800 p-4 rounded-xl border border-gray-700 flex justify-between items-center">
-                  <div className="flex items-center gap-4">
-                      <div className="bg-gray-700 p-3 rounded-full text-blue-400">
+              <div key={task.id} className="bg-[#1e293b] p-6 rounded-[2rem] border border-white/5 flex justify-between items-center group hover:border-blue-500/20 transition-all shadow-xl">
+                  <div className="flex items-center gap-5">
+                      <div className="bg-[#0b1120] p-4 rounded-2xl text-blue-500 shadow-inner group-hover:scale-110 transition-transform">
                           {task.type === TaskType.YOUTUBE ? <Video /> : 
                            task.type === TaskType.WEBSITE ? <Globe /> : 
                            task.type === TaskType.TELEGRAM ? <Send /> :
+                           task.type === TaskType.SHORTLINK ? <Lock /> :
                            <FileText />}
                       </div>
                       <div>
-                          <h3 className="font-bold text-white">{task.title}</h3>
-                          <p className="text-sm text-gray-400">
-                              {task.reward} Pts • 
-                              {task.type === TaskType.TELEGRAM ? <span className="text-blue-400 font-bold ml-1">{task.channelUsername}</span> : `${task.durationSeconds}s`} 
-                              • {task.completedCount}/{task.totalLimit} Done
-                          </p>
+                          <h3 className="font-black text-white text-sm uppercase tracking-tight">{task.title}</h3>
+                          <div className="flex items-center gap-3 mt-1">
+                              <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">{task.reward} Pts</span>
+                              <span className="text-gray-700 text-[10px]">•</span>
+                              <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{task.completedCount}/{task.totalLimit} Done</span>
+                              {task.type === TaskType.SHORTLINK && (
+                                  <span className="text-[8px] bg-blue-600/10 text-blue-400 px-2 py-0.5 rounded-md font-black uppercase tracking-widest border border-blue-500/10">Secure File</span>
+                              )}
+                          </div>
                       </div>
                   </div>
                   <div className="flex gap-2">
-                      <button onClick={() => handleEdit(task)} className="p-2 text-blue-400 hover:bg-blue-400/10 rounded"><Edit size={18} /></button>
-                      <button onClick={() => handleDelete(task.id)} className="p-2 text-red-400 hover:bg-red-400/10 rounded"><Trash2 size={18} /></button>
+                      <button onClick={() => handleEdit(task)} className="p-3 text-blue-400 hover:bg-blue-400/10 rounded-xl transition-all"><Edit size={18} /></button>
+                      <button onClick={() => handleDelete(task.id)} className="p-3 text-red-400 hover:bg-red-400/10 rounded-xl transition-all"><Trash2 size={18} /></button>
                   </div>
               </div>
           ))}

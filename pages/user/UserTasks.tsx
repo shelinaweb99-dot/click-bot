@@ -3,7 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Task, TaskType, TaskStatus } from '../../types';
 import { getTasks, getCurrentUserId, getTransactions, subscribeToChanges } from '../../services/mockDb';
-import { Youtube, Globe, Edit, PlayCircle, RefreshCw, Send, Clock } from 'lucide-react';
+// Fixed: Added CheckCircle to imports
+import { Youtube, Globe, Edit, PlayCircle, RefreshCw, Send, Clock, Lock, FileDown, CheckCircle } from 'lucide-react';
 
 export const UserTasks: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -12,7 +13,6 @@ export const UserTasks: React.FC = () => {
   const isMounted = useRef(true);
 
   const fetchTasks = async () => {
-    // Only set loading on first fetch to avoid flickering on updates
     if (tasks.length === 0 && isMounted.current) setLoading(true);
     
     try {
@@ -22,50 +22,27 @@ export const UserTasks: React.FC = () => {
             return;
         }
 
-        // Fetch User History
         const userTransactions = await getTransactions(userId);
         if (!isMounted.current) return;
 
-        // Map to store the last completion time for each task
-        const lastCompletionMap = new Map<string, number>();
-        
+        const completionMap = new Map<string, boolean>();
         userTransactions.forEach(tx => {
             if (tx.taskId && tx.type === 'EARNING') {
-                const txTime = new Date(tx.date).getTime();
-                const existing = lastCompletionMap.get(tx.taskId) || 0;
-                // Keep the most recent completion time
-                if (txTime > existing) {
-                    lastCompletionMap.set(tx.taskId, txTime);
-                }
+                completionMap.set(tx.taskId, true);
             }
         });
 
         const allTasks = await getTasks();
         if (!isMounted.current) return;
         
-        const now = Date.now();
-        const COOLDOWN_PERIOD = 24 * 60 * 60 * 1000; // 24 Hours in ms
-
-        // Filter Tasks
-        const activeTasks = allTasks.filter(t => {
-            // 1. Must be globally active
-            if (t.status !== TaskStatus.ACTIVE) return false;
-
-            // 2. Check personal 24h cooldown
-            const lastCompletedAt = lastCompletionMap.get(t.id);
-            if (lastCompletedAt) {
-                const timeSinceCompletion = now - lastCompletedAt;
-                // If less than 24 hours passed, hide it
-                if (timeSinceCompletion < COOLDOWN_PERIOD) {
-                    return false;
-                }
-            }
-            
-            return true;
-        });
+        // Split tasks into active (not done) and available files (done)
+        const filteredTasks = allTasks.filter(t => t.status === TaskStatus.ACTIVE);
         
         if (isMounted.current) {
-            setTasks(activeTasks);
+            setTasks(filteredTasks.map(t => ({
+                ...t,
+                isCompleted: completionMap.get(t.id) || false
+            } as any)));
             setLoading(false);
         }
     } catch (e) {
@@ -86,76 +63,80 @@ export const UserTasks: React.FC = () => {
     };
   }, []);
 
-  const getIcon = (type: TaskType) => {
+  const getIcon = (type: TaskType, isDone: boolean) => {
+    if (type === TaskType.SHORTLINK && isDone) return <FileDown className="text-green-500" />;
     switch(type) {
         case TaskType.YOUTUBE: return <Youtube className="text-red-500" />;
         case TaskType.WEBSITE: return <Globe className="text-blue-500" />;
         case TaskType.TELEGRAM: return <Send className="text-blue-400" />;
-        case TaskType.CUSTOM: return <Edit className="text-yellow-500" />;
+        case TaskType.SHORTLINK: return <Lock className="text-amber-500" />;
+        case TaskType.CUSTOM: return <Edit className="text-purple-500" />;
     }
   };
 
-  const getActionText = (type: TaskType) => {
-      switch(type) {
-          case TaskType.TELEGRAM: return "Join Channel";
-          case TaskType.CUSTOM: return "Complete Job";
-          default: return "Start Task";
-      }
-  }
-
   return (
-    <div className="space-y-4 animate-in fade-in duration-500">
-      <div className="flex justify-between items-center mb-4 px-1">
-          <h2 className="text-xl font-black text-white uppercase tracking-tight">Available Tasks</h2>
+    <div className="space-y-6 animate-in fade-in duration-500 pb-10">
+      <div className="flex justify-between items-center px-1">
+          <div>
+              <h2 className="text-2xl font-black text-white uppercase tracking-tight">Active Missions</h2>
+              <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest mt-1">Syncing Live Directory</p>
+          </div>
           <button 
             onClick={fetchTasks} 
-            className={`p-2 rounded-xl hover:bg-gray-800 text-gray-500 hover:text-white transition ${loading ? 'animate-spin' : ''}`}
-            title="Refresh Tasks"
+            className={`p-3 bg-gray-900 rounded-2xl text-gray-500 hover:text-white transition-all shadow-xl active:scale-90 ${loading ? 'animate-spin' : ''}`}
           >
               <RefreshCw size={20} />
           </button>
       </div>
       
       {tasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center bg-gray-900/40 rounded-3xl border border-white/5 backdrop-blur-sm">
-              <Clock size={40} className="text-gray-700 mb-4" />
-              <p className="text-gray-500 font-bold mb-2">No active missions</p>
-              <p className="text-[10px] text-gray-600 max-w-[200px] mx-auto uppercase tracking-widest font-bold">
-                  Tasks reset every 24 hours. Check back later!
-              </p>
-              <button 
-                onClick={fetchTasks}
-                className="text-blue-500 text-xs font-black uppercase tracking-widest mt-6 hover:underline"
-              >
-                Tap to Sync
-              </button>
+          <div className="flex flex-col items-center justify-center py-20 text-center bg-white/[0.02] rounded-[2.5rem] border border-white/5 backdrop-blur-sm">
+              <Clock size={48} className="text-gray-800 mb-6" />
+              <p className="text-gray-500 font-bold uppercase tracking-widest text-[11px]">No active missions available</p>
+              <p className="text-[9px] text-gray-700 mt-2 uppercase tracking-[0.2em] font-black">Check back soon for new rewards</p>
           </div>
       ) : (
-        tasks.map(task => (
-            <div key={task.id} className="glass-card rounded-3xl p-5 border border-white/5 hover:border-blue-500/30 transition-all cursor-pointer group" onClick={() => navigate(`/tasks/${task.id}`)}>
-                <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-4">
-                        <div className="bg-gray-900 p-3.5 rounded-2xl border border-white/5 text-blue-400 group-hover:scale-110 transition-transform">
-                            {getIcon(task.type)}
+        <div className="space-y-4">
+            {tasks.map((task: any) => (
+                <div 
+                    key={task.id} 
+                    className={`glass-card rounded-[2rem] p-5 border border-white/5 transition-all cursor-pointer group hover:border-blue-500/30 shadow-xl ${task.isCompleted ? 'opacity-80' : ''}`}
+                    onClick={() => navigate(`/tasks/${task.id}`)}
+                >
+                    <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-4">
+                            <div className="bg-[#030712] p-4 rounded-2xl border border-white/5 text-blue-400 group-hover:scale-110 transition-transform shadow-inner">
+                                {getIcon(task.type, task.isCompleted)}
+                            </div>
+                            <div className="min-w-0">
+                                <h3 className="text-white font-bold text-[13px] line-clamp-1 uppercase tracking-tight">{task.title}</h3>
+                                <p className="text-gray-600 text-[9px] mt-1 font-black uppercase tracking-widest">
+                                    {task.isCompleted ? (
+                                        <span className="text-green-500 flex items-center gap-1">Mission Completed <CheckCircle size={10} /></span>
+                                    ) : (
+                                        task.type === TaskType.SHORTLINK ? 'Unlock Protected File' : 'Verification Reward'
+                                    )}
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <h3 className="text-white font-bold text-sm line-clamp-1">{task.title}</h3>
-                            <p className="text-gray-500 text-[10px] mt-1 font-bold uppercase tracking-wider">
-                                {task.type === TaskType.CUSTOM ? 'Manual Review' : 
-                                 task.type === TaskType.TELEGRAM ? 'Community Join' :
-                                 `Verify in ${task.durationSeconds}s`}
-                            </p>
+                        <div className={`px-4 py-2 rounded-xl text-[10px] font-black whitespace-nowrap border shadow-sm transition-colors ${task.isCompleted ? 'bg-green-500/10 text-green-500 border-green-500/10' : 'bg-blue-600/10 text-blue-400 border-blue-500/10'}`}>
+                            {task.isCompleted ? 'CLAIMED' : `+${task.reward} Pts`}
                         </div>
                     </div>
-                    <div className="bg-blue-600/10 text-blue-400 px-4 py-1.5 rounded-full text-xs font-black whitespace-nowrap border border-blue-500/10 shadow-sm">
-                        +{task.reward} USDT
-                    </div>
+                    
+                    <button className={`w-full mt-5 py-4 rounded-[1.2rem] text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border shadow-lg ${
+                        task.isCompleted 
+                        ? 'bg-emerald-600/10 text-emerald-500 border-emerald-500/10' 
+                        : 'bg-blue-600 hover:bg-blue-700 text-white border-blue-400/20 active:scale-95'
+                    }`}>
+                        {task.isCompleted 
+                            ? (task.type === TaskType.SHORTLINK ? <>Access File <FileDown size={14} /></> : 'Mission Logged')
+                            : (task.type === TaskType.SHORTLINK ? 'Start Link' : 'Deploy Mission') 
+                        }
+                    </button>
                 </div>
-                <button className="w-full mt-5 bg-blue-600/5 hover:bg-blue-600 hover:text-white text-blue-500 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-blue-500/10">
-                    {getActionText(task.type)} <PlayCircle size={14} />
-                </button>
-            </div>
-        ))
+            ))}
+        </div>
       )}
     </div>
   );

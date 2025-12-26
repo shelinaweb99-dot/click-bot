@@ -4,10 +4,9 @@ import { User, Task, WithdrawalRequest, UserRole, Transaction, AdSettings, Syste
 const API_URL = '/api';
 
 // --- GLOBAL STATE CACHE ---
-// Persists for the duration of the session to avoid redundant fetches
 const _cache: Record<string, { data: any, timestamp: number }> = {};
 const _pendingRequests: Record<string, Promise<any>> = {};
-const CACHE_TTL = 60000; // 60 seconds TTL for standard data
+const CACHE_TTL = 60000;
 
 const getCached = (key: string) => {
     const item = _cache[key];
@@ -28,26 +27,19 @@ const clearAuth = () => {
     localStorage.removeItem('session_token'); 
     localStorage.removeItem('app_user_id'); 
     localStorage.removeItem('app_user_role');
-    // Clear cache on logout
     Object.keys(_cache).forEach(k => delete _cache[k]);
 };
 
 const apiCall = async (action: string, data: any = {}, forceRefresh = false) => {
     const cacheKey = `${action}_${JSON.stringify(data)}`;
-    
-    // 1. Check Cache first if not forcing refresh
     if (!forceRefresh) {
         const cached = getCached(cacheKey);
         if (cached) return cached;
     }
-
-    // 2. Deduplicate concurrent identical requests
-    if (_pendingRequests[cacheKey]) {
-        return _pendingRequests[cacheKey];
-    }
+    if (_pendingRequests[cacheKey]) return _pendingRequests[cacheKey];
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
     
     const requestPromise = (async () => {
         try {
@@ -79,7 +71,6 @@ const apiCall = async (action: string, data: any = {}, forceRefresh = false) => 
             return json;
         } catch (e: any) {
             clearTimeout(timeoutId);
-            if (e.name === 'AbortError') throw new Error("Connection timeout.");
             throw e;
         } finally {
             delete _pendingRequests[cacheKey];
@@ -91,7 +82,6 @@ const apiCall = async (action: string, data: any = {}, forceRefresh = false) => 
 };
 
 export const initMockData = () => {
-    // Warm up common data
     const token = getAuthToken();
     if (token) {
         getUserById(getUserId() || '');
@@ -131,11 +121,14 @@ export const getTasks = async (force = false): Promise<Task[]> => apiCall('getTa
 
 export const verifyAndCompleteTask = async (userId: string, taskId: string) => {
     const res = await apiCall('completeTask', { taskId }, true);
-    // Invalidate caches
     delete _cache[`getTasks_{}`];
     delete _cache[`getUser_{}`];
     window.dispatchEvent(new Event('db_change'));
     return res;
+};
+
+export const getProtectedFile = async (taskId: string) => {
+    return apiCall('getProtectedFile', { taskId }, true);
 };
 
 export const claimDailyReward = async (userId: string) => {
@@ -145,19 +138,11 @@ export const claimDailyReward = async (userId: string) => {
     return res;
 };
 
-export const playMiniGame = async (userId: string, gameType: string) => {
-    const res = await apiCall('playMiniGame', { gameType }, true);
-    delete _cache[`getUser_{}`];
-    window.dispatchEvent(new Event('db_change'));
-    return res;
-}
-
 export const getTransactions = async (userId: string, force = false): Promise<Transaction[]> => apiCall('getTransactions', {}, force);
 
 export const createWithdrawal = async (req: WithdrawalRequest) => {
     const res = await apiCall('createWithdrawal', { request: req }, true);
     delete _cache[`getUser_{}`];
-    delete _cache[`getWithdrawals_{}`];
     window.dispatchEvent(new Event('db_change'));
     return res;
 }
@@ -171,8 +156,6 @@ export const updateWithdrawalStatus = async (id: string, status: string) => {
     return res;
 }
 
-export const triggerHoneypot = () => apiCall('triggerHoneypot', {}, true);
-
 export const getSystemSettings = async (): Promise<SystemSettings> => apiCall('getSettings', { key: 'system' });
 export const saveSystemSettings = async (s: SystemSettings) => {
     const res = await apiCall('saveSettings', { key: 'system', payload: s }, true);
@@ -182,34 +165,6 @@ export const saveSystemSettings = async (s: SystemSettings) => {
 
 export const getAdSettings = async (): Promise<AdSettings> => apiCall('getSettings', { key: 'ads' });
 export const saveAdSettings = async (s: AdSettings) => apiCall('saveSettings', { key: 'ads', payload: s }, true);
-export const getGameSettings = async (): Promise<GameSettings> => apiCall('getSettings', { key: 'games' });
-export const saveGameSettings = async (s: GameSettings) => apiCall('saveSettings', { key: 'games', payload: s }, true);
-export const getShortsSettings = async (): Promise<ShortsSettings> => apiCall('getSettings', { key: 'shorts' });
-export const saveShortsSettings = async (s: ShortsSettings) => apiCall('saveSettings', { key: 'shorts', payload: s }, true);
-
-export const getShorts = async (force = false): Promise<ShortVideo[]> => apiCall('getShorts', {}, force);
-export const addShort = async (url: string) => {
-    const res = await apiCall('addShort', { url }, true);
-    window.dispatchEvent(new Event('db_change'));
-    return res;
-}
-export const deleteShort = async (id: string) => {
-    const res = await apiCall('deleteShort', { id }, true);
-    window.dispatchEvent(new Event('db_change'));
-    return res;
-}
-
-export const getAnnouncements = async (): Promise<Announcement[]> => apiCall('getAnnouncements', {});
-export const addAnnouncement = async (a: any) => {
-    const res = await apiCall('addAnnouncement', { payload: a }, true);
-    window.dispatchEvent(new Event('db_change'));
-    return res;
-}
-export const deleteAnnouncement = async (id: string) => {
-    const res = await apiCall('deleteAnnouncement', { id }, true);
-    window.dispatchEvent(new Event('db_change'));
-    return res;
-}
 
 export const saveTask = async (task: Task) => {
     const res = await apiCall('saveTask', { payload: task }, true);
@@ -235,13 +190,6 @@ export const getLeaderboard = async () => {
 
 export const getUsers = async () => apiCall('getAllUsers', {}, false);
 
-export const processReferral = async (userId: string, code: string) => {
-    const res = await apiCall('processReferral', { userId, code }, true);
-    delete _cache[`getUser_{}`];
-    window.dispatchEvent(new Event('db_change'));
-    return res;
-}
-
 export const getPaymentMethods = async (): Promise<WithdrawalMethod[]> => {
     const data = await apiCall('getSettings', { key: 'payment_methods' });
     if (!data) return [];
@@ -250,34 +198,6 @@ export const getPaymentMethods = async (): Promise<WithdrawalMethod[]> => {
 
 export const updateAllPaymentMethods = async (methods: WithdrawalMethod[]) => {
     const res = await apiCall('saveSettings', { key: 'payment_methods', payload: { methods } }, true);
-    window.dispatchEvent(new Event('db_change'));
-    return res;
-}
-
-// Fix: Added missing savePaymentMethod function for AdminSettings.tsx
-export const savePaymentMethod = async (method: WithdrawalMethod) => {
-    const methods = await getPaymentMethods();
-    const existingIndex = methods.findIndex(m => m.id === method.id);
-    let updatedMethods;
-    if (existingIndex >= 0) {
-        updatedMethods = [...methods];
-        updatedMethods[existingIndex] = method;
-    } else {
-        updatedMethods = [...methods, method];
-    }
-    return updateAllPaymentMethods(updatedMethods);
-};
-
-// Fix: Added missing deletePaymentMethod function for AdminSettings.tsx
-export const deletePaymentMethod = async (id: string) => {
-    const methods = await getPaymentMethods();
-    const updatedMethods = methods.filter(m => m.id !== id);
-    return updateAllPaymentMethods(updatedMethods);
-};
-
-export const recordShortView = async (u: string, v: string) => {
-    const res = await apiCall('completeShort', { videoId: v }, true);
-    delete _cache[`getUser_{}`];
     window.dispatchEvent(new Event('db_change'));
     return res;
 }
@@ -300,21 +220,169 @@ export const getRotatedLink = async (): Promise<string | null> => {
     return settings?.monetagDirectLink || settings?.adsterraLink || null;
 };
 
-export const initiateAdWatch = async () => apiCall('initiateAdWatch', {}, true);
+// --- FIX: ADDED MISSING EXPORTS ---
 
+/** 
+ * Mock implementation of getting public IP 
+ */
 export const getPublicIp = async () => {
-    const cached = getCached('public_ip');
-    if (cached) return cached;
     try {
         const res = await fetch('https://api.ipify.org?format=json');
         const data = await res.json();
-        setCache('public_ip', data.ip);
         return data.ip;
-    } catch {
-        return '127.0.0.1';
+    } catch (e) {
+        return "127.0.0.1";
     }
 };
 
+/** 
+ * Mock implementation of getting device fingerprint 
+ */
 export const getFingerprint = () => {
-    return btoa(navigator.userAgent + screen.width).substring(0, 16);
+    return 'dev_' + Math.random().toString(36).substr(2, 9);
+};
+
+/** 
+ * Honeypot trigger for security monitoring 
+ */
+export const triggerHoneypot = () => {
+    console.warn("Security Event: Administrative Honeypot Triggered.");
+    apiCall('logSecurityEvent', { type: 'HONEYPOT_ACCESS' });
+};
+
+/** 
+ * Save a single payment method by updating the global list 
+ */
+export const savePaymentMethod = async (method: WithdrawalMethod) => {
+    const methods = await getPaymentMethods();
+    const index = methods.findIndex(m => m.id === method.id);
+    if (index !== -1) {
+        methods[index] = method;
+    } else {
+        methods.push(method);
+    }
+    return updateAllPaymentMethods(methods);
+};
+
+/** 
+ * Delete a payment method from the global list 
+ */
+export const deletePaymentMethod = async (id: string) => {
+    const methods = await getPaymentMethods();
+    const filtered = methods.filter(m => m.id !== id);
+    return updateAllPaymentMethods(filtered);
+};
+
+/** 
+ * Process a referral code for a user 
+ */
+export const processReferral = async (userId: string, code: string) => {
+    return apiCall('processReferral', { code }, true);
+};
+
+/** 
+ * Retrieve all announcements 
+ */
+export const getAnnouncements = async (): Promise<Announcement[]> => {
+    const data = await apiCall('getSettings', { key: 'announcements' });
+    return Array.isArray(data) ? data : (data?.list || []);
+};
+
+/** 
+ * Add a new announcement 
+ */
+export const addAnnouncement = async (announcement: Announcement) => {
+    const list = await getAnnouncements();
+    list.unshift(announcement);
+    const res = await apiCall('saveSettings', { key: 'announcements', payload: { list } }, true);
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+};
+
+/** 
+ * Delete an announcement 
+ */
+export const deleteAnnouncement = async (id: string) => {
+    const list = await getAnnouncements();
+    const filtered = list.filter(a => a.id !== id);
+    const res = await apiCall('saveSettings', { key: 'announcements', payload: { list: filtered } }, true);
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+};
+
+/** 
+ * Retrieve game configuration settings 
+ */
+export const getGameSettings = async (): Promise<GameSettings> => {
+    return apiCall('getSettings', { key: 'games' });
+};
+
+/** 
+ * Save game configuration settings 
+ */
+export const saveGameSettings = async (settings: GameSettings) => {
+    const res = await apiCall('saveSettings', { key: 'games', payload: settings }, true);
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+};
+
+/** 
+ * Execute a mini-game play 
+ */
+export const playMiniGame = async (userId: string, gameType: string) => {
+    const res = await apiCall('playGame', { gameType }, true);
+    delete _cache[`getUser_{}`];
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+};
+
+/** 
+ * Retrieve shorts feature settings 
+ */
+export const getShortsSettings = async (): Promise<ShortsSettings> => {
+    return apiCall('getSettings', { key: 'shorts' });
+};
+
+/** 
+ * Save shorts feature settings 
+ */
+export const saveShortsSettings = async (settings: ShortsSettings) => {
+    const res = await apiCall('saveSettings', { key: 'shorts', payload: settings }, true);
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+};
+
+/** 
+ * Add a new video to the shorts list 
+ */
+export const addShort = async (url: string) => {
+    const res = await apiCall('addShort', { url }, true);
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+};
+
+/** 
+ * Delete a video from the shorts list 
+ */
+export const deleteShort = async (id: string) => {
+    const res = await apiCall('deleteShort', { id }, true);
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+};
+
+/** 
+ * Retrieve all short videos 
+ */
+export const getShorts = async (): Promise<ShortVideo[]> => {
+    return apiCall('getShorts', {}, false);
+};
+
+/** 
+ * Record a short video view and award points 
+ */
+export const recordShortView = async (userId: string, videoId: string) => {
+    const res = await apiCall('recordShortView', { videoId }, true);
+    delete _cache[`getUser_{}`];
+    window.dispatchEvent(new Event('db_change'));
+    return res;
 };
