@@ -23,14 +23,15 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
     setStatus('LOADING');
     setErrorMsg('');
 
-    // --- MODE 1: DIRECT LINK (AUTO-OPEN) ---
-    if (type === 'DIRECT') {
+    // --- PRIORITY: DYNAMIC AD ROTATION / DIRECT LINK ---
+    // If rotation is enabled or type is DIRECT, we use the Direct Link mode
+    if (settings.rotation?.isEnabled || type === 'DIRECT') {
         try {
             const link = await getRotatedLink();
             if (link) {
                 const tg = (window as any).Telegram?.WebApp;
                 
-                // For Telegram Mini Apps, use openLink to bypass popup blockers
+                // Use Telegram's native link opener to avoid popup blockers
                 if (tg && typeof tg.openLink === 'function') {
                     tg.openLink(link);
                 } else {
@@ -38,14 +39,17 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
                 }
                 
                 setStatus('SHOWING');
-                // Automatically complete after a short delay to credit points without manual click
-                timeoutRef.current = setTimeout(onComplete, 3000);
+                // AUTO-COMPLETE: Credit user after 3 seconds without requiring a click
+                timeoutRef.current = setTimeout(() => {
+                    onComplete();
+                }, 3000);
             } else {
-                throw new Error("No direct link configured.");
+                throw new Error("No direct link found.");
             }
         } catch (e: any) {
             setStatus('ERROR');
             setErrorMsg(e.message || 'Direct link failure.');
+            // Even on error, auto-complete after delay so user isn't stuck
             setTimeout(onComplete, 2000);
         }
         return;
@@ -53,21 +57,25 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
 
     // --- MODE 2: TELEGRAM SDK (ZONE ID) ---
     let zoneId = '';
-    switch(type) {
-        case 'REWARDED_INTERSTITIAL': zoneId = settings.monetagRewardedInterstitialId || ''; break;
-        case 'REWARDED_POPUP': zoneId = settings.monetagRewardedPopupId || ''; break;
-        case 'INTERSTITIAL': zoneId = settings.monetagInterstitialId || ''; break;
-        default: zoneId = settings.monetagZoneId || '';
+    // Decide which zone to use
+    if (type === 'REWARDED_INTERSTITIAL' && settings.monetagRewardedInterstitialId) {
+        zoneId = settings.monetagRewardedInterstitialId;
+    } else if (type === 'REWARDED_POPUP' && settings.monetagRewardedPopupId) {
+        zoneId = settings.monetagRewardedPopupId;
+    } else if (type === 'INTERSTITIAL' && settings.monetagInterstitialId) {
+        zoneId = settings.monetagInterstitialId;
+    } else {
+        zoneId = settings.monetagZoneId || '';
     }
 
     if (!zoneId) {
         setStatus('ERROR');
-        setErrorMsg('Ad Zone ID not found.');
-        setTimeout(onComplete, 2000);
+        setErrorMsg('Ad Zone ID not configured.');
+        setTimeout(onComplete, 1500);
         return;
     }
 
-    // Inject Script into Head for better loading
+    // 1. Ensure Script Injection
     const scriptId = `monetag-sdk-${zoneId}`;
     if (!document.getElementById(scriptId)) {
         const script = document.createElement('script');
@@ -78,8 +86,10 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
         document.head.appendChild(script);
     }
 
-    // Poll for SDK function and execute automatically
+    // 2. Poll for SDK activation function
     let attempts = 0;
+    const maxAttempts = 80; // 8 seconds total polling
+    
     pollingInterval.current = setInterval(() => {
         attempts++;
         const funcName = `show_${zoneId}`;
@@ -89,17 +99,18 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
             try {
                 (window as any)[funcName]();
                 setStatus('SHOWING');
-                // Standard rewarded wait then auto-complete
-                timeoutRef.current = setTimeout(onComplete, 12000); 
+                // AUTO-COMPLETE: Standard rewarded ad wait time then credit points
+                timeoutRef.current = setTimeout(onComplete, 15000); 
             } catch (e) {
                 setStatus('ERROR');
-                setErrorMsg('SDK Execution Failed.');
+                setErrorMsg('SDK Execution Blocked.');
                 setTimeout(onComplete, 2000);
             }
-        } else if (attempts >= 80) { // 8 seconds timeout
+        } else if (attempts >= maxAttempts) {
             clearInterval(pollingInterval.current);
             setStatus('ERROR');
-            setErrorMsg('SDK Load Timeout.');
+            setErrorMsg('SDK Load Timeout. Skipping to reward...');
+            // FAIL-SAFE: If ad fails to load, still credit user so they don't complain
             setTimeout(onComplete, 2000);
         }
     }, 100);
@@ -122,7 +133,7 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-3xl flex items-center justify-center p-6 animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-3xl flex items-center justify-center p-6 animate-in fade-in duration-500">
       <div className="bg-gray-900 w-full max-w-sm rounded-[3rem] border border-white/5 shadow-2xl overflow-hidden p-10 text-center relative animate-in zoom-in duration-300">
           
           <div className="space-y-6">
@@ -131,23 +142,23 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
                 <div className={`absolute inset-0 ${status === 'ERROR' ? 'bg-red-500/20' : 'bg-blue-500/20'} blur-2xl animate-pulse`}></div>
               </div>
               
-              <div>
-                <h3 className="text-white font-black text-xs uppercase tracking-[0.2em] mb-2">
-                    {status === 'LOADING' ? 'Bridging Sponsor' : 
-                     status === 'SHOWING' ? 'Ad Dispatched' : 'System Error'}
+              <div className="space-y-2">
+                <h3 className="text-white font-black text-xs uppercase tracking-[0.2em]">
+                    {status === 'LOADING' ? 'Connecting Node' : 
+                     status === 'SHOWING' ? 'Ad Dispatched' : 'Network Alert'}
                 </h3>
                 <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
-                    {status === 'LOADING' ? 'Synchronizing with monetization node...' : 
-                     status === 'SHOWING' ? 'Please wait, reward processing in progress...' : 
-                     errorMsg || 'Connection timed out.'}
+                    {status === 'LOADING' ? 'Synchronizing with sponsor network...' : 
+                     status === 'SHOWING' ? 'Processing reward assets. Please wait...' : 
+                     errorMsg || 'Retrying connection...'}
                 </p>
               </div>
           </div>
 
-          <div className="mt-8 pt-6 border-t border-white/5">
-              <div className="flex items-center justify-center gap-2 text-blue-500 animate-pulse">
+          <div className="mt-10 pt-6 border-t border-white/5">
+              <div className="flex items-center justify-center gap-2 text-blue-500/50 animate-pulse">
                 <Zap size={14} />
-                <span className="text-[9px] font-black uppercase tracking-[0.3em]">No Interaction Required</span>
+                <span className="text-[9px] font-black uppercase tracking-[0.3em]">Full Automation Active</span>
               </div>
           </div>
       </div>

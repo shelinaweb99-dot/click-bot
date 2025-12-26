@@ -165,7 +165,9 @@ export const ShortsFeed: React.FC = () => {
           if (isMountedRef.current && res.success) {
               setCurrentVideoStatus('COMPLETED');
               
+              // Correctly update local count for ad tracking
               const newWatchedTodayCount = (userShortsData?.watchedTodayCount || 0) + 1;
+              
               setUserShortsData(prev => ({
                   ...prev!,
                   watchedTodayCount: newWatchedTodayCount
@@ -174,14 +176,15 @@ export const ShortsFeed: React.FC = () => {
               // AUTOMATIC AD TRIGGER
               const freq = settings?.adFrequency || 10;
               if (newWatchedTodayCount > 0 && newWatchedTodayCount % freq === 0) {
-                  // Wait slightly for reward animation then force ad
+                  // Ad pops automatically after 1 second of victory screen
                   setTimeout(() => {
                       if (isMountedRef.current) {
                           setShowAd(true);
                       }
-                  }, 1500);
+                  }, 1200);
               }
 
+              // Remove the video from list after a short delay
               setTimeout(() => {
                   if (isMountedRef.current) {
                       setVideos(prev => prev.filter(v => v.id !== videoId));
@@ -198,7 +201,8 @@ export const ShortsFeed: React.FC = () => {
       if (!userId) return;
       try {
           await recordAdReward(userId);
-          await loadData(true);
+          // Silent refresh to update balance in background
+          loadData(true);
       } catch (e) { console.error(e); }
   };
 
@@ -329,7 +333,7 @@ export const ShortsFeed: React.FC = () => {
                 isOpen={showAd} 
                 onComplete={onAdComplete} 
                 settings={adSettings} 
-                type="DIRECT" 
+                type="REWARDED_INTERSTITIAL"
             />
         )}
     </div>
