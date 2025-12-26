@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, ShieldAlert, AlertCircle, ExternalLink, Zap } from 'lucide-react';
+import { Loader2, ShieldAlert, AlertCircle, Zap } from 'lucide-react';
 import { AdSettings, MonetagAdType } from '../types';
 import { getRotatedLink } from '../services/mockDb';
 
@@ -28,10 +28,18 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
         try {
             const link = await getRotatedLink();
             if (link) {
-                window.open(link, '_blank');
+                const tg = (window as any).Telegram?.WebApp;
+                
+                // For Telegram Mini Apps, use openLink to bypass popup blockers
+                if (tg && typeof tg.openLink === 'function') {
+                    tg.openLink(link);
+                } else {
+                    window.open(link, '_blank');
+                }
+                
                 setStatus('SHOWING');
-                // Automatically complete after 8 seconds to credit points
-                timeoutRef.current = setTimeout(onComplete, 8000);
+                // Automatically complete after a short delay to credit points without manual click
+                timeoutRef.current = setTimeout(onComplete, 3000);
             } else {
                 throw new Error("No direct link configured.");
             }
@@ -54,12 +62,12 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
 
     if (!zoneId) {
         setStatus('ERROR');
-        setErrorMsg('Ad Zone ID not configured.');
+        setErrorMsg('Ad Zone ID not found.');
         setTimeout(onComplete, 2000);
         return;
     }
 
-    // Inject Script
+    // Inject Script into Head for better loading
     const scriptId = `monetag-sdk-${zoneId}`;
     if (!document.getElementById(scriptId)) {
         const script = document.createElement('script');
@@ -67,10 +75,10 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
         script.src = settings.monetagAdTag || DEFAULT_MONETAG_SCRIPT;
         script.async = true;
         script.dataset.zone = zoneId;
-        document.body.appendChild(script);
+        document.head.appendChild(script);
     }
 
-    // Poll for SDK function
+    // Poll for SDK function and execute automatically
     let attempts = 0;
     pollingInterval.current = setInterval(() => {
         attempts++;
@@ -81,13 +89,14 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
             try {
                 (window as any)[funcName]();
                 setStatus('SHOWING');
-                timeoutRef.current = setTimeout(onComplete, 15000); // Fallback credit
+                // Standard rewarded wait then auto-complete
+                timeoutRef.current = setTimeout(onComplete, 12000); 
             } catch (e) {
                 setStatus('ERROR');
                 setErrorMsg('SDK Execution Failed.');
                 setTimeout(onComplete, 2000);
             }
-        } else if (attempts >= 50) { // 5 seconds
+        } else if (attempts >= 80) { // 8 seconds timeout
             clearInterval(pollingInterval.current);
             setStatus('ERROR');
             setErrorMsg('SDK Load Timeout.');
@@ -116,49 +125,31 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
     <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-3xl flex items-center justify-center p-6 animate-in fade-in duration-300">
       <div className="bg-gray-900 w-full max-w-sm rounded-[3rem] border border-white/5 shadow-2xl overflow-hidden p-10 text-center relative animate-in zoom-in duration-300">
           
-          {status === 'LOADING' && (
-              <div className="space-y-6">
-                  <div className="relative w-16 h-16 mx-auto">
-                    <Loader2 className="w-full h-full text-blue-500 animate-spin" strokeWidth={1.5} />
-                    <div className="absolute inset-0 bg-blue-500/20 blur-2xl animate-pulse"></div>
-                  </div>
-                  <h3 className="text-white font-black text-xs uppercase tracking-[0.2em] animate-pulse">Initializing Ad</h3>
+          <div className="space-y-6">
+              <div className="relative w-16 h-16 mx-auto">
+                <Loader2 className={`w-full h-full ${status === 'ERROR' ? 'text-red-500' : 'text-blue-500'} animate-spin`} strokeWidth={1.5} />
+                <div className={`absolute inset-0 ${status === 'ERROR' ? 'bg-red-500/20' : 'bg-blue-500/20'} blur-2xl animate-pulse`}></div>
               </div>
-          )}
-
-          {status === 'SHOWING' && (
-              <div className="space-y-6">
-                  <div className="w-20 h-20 bg-blue-600/10 rounded-3xl flex items-center justify-center mx-auto border border-blue-500/20 shadow-xl">
-                      <Zap className="text-blue-500 animate-pulse" size={40} />
-                  </div>
-                  <div>
-                    <h3 className="text-white font-black text-sm uppercase tracking-widest">
-                        {type === 'DIRECT' ? 'Redirecting to Sponsor...' : 'Ad Active'}
-                    </h3>
-                    <p className="text-gray-500 text-[10px] mt-2 font-bold uppercase tracking-widest leading-relaxed">
-                        Points will be credited automatically in a few seconds.
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-center gap-1 text-blue-400">
-                      <ExternalLink size={12} />
-                      <span className="text-[9px] font-black uppercase tracking-widest">Secure Link Opened</span>
-                  </div>
+              
+              <div>
+                <h3 className="text-white font-black text-xs uppercase tracking-[0.2em] mb-2">
+                    {status === 'LOADING' ? 'Bridging Sponsor' : 
+                     status === 'SHOWING' ? 'Ad Dispatched' : 'System Error'}
+                </h3>
+                <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
+                    {status === 'LOADING' ? 'Synchronizing with monetization node...' : 
+                     status === 'SHOWING' ? 'Please wait, reward processing in progress...' : 
+                     errorMsg || 'Connection timed out.'}
+                </p>
               </div>
-          )}
+          </div>
 
-          {status === 'ERROR' && (
-              <div className="space-y-6">
-                  <AlertCircle className="text-red-500 mx-auto" size={48} />
-                  <p className="text-red-400 text-[10px] font-black uppercase tracking-widest">{errorMsg}</p>
+          <div className="mt-8 pt-6 border-t border-white/5">
+              <div className="flex items-center justify-center gap-2 text-blue-500 animate-pulse">
+                <Zap size={14} />
+                <span className="text-[9px] font-black uppercase tracking-[0.3em]">No Interaction Required</span>
               </div>
-          )}
-
-          <button 
-            onClick={onComplete}
-            className="mt-10 text-gray-700 hover:text-gray-500 text-[8px] font-black uppercase tracking-[0.5em] transition-colors"
-          >
-              Skip & Continue
-          </button>
+          </div>
       </div>
     </div>
   );

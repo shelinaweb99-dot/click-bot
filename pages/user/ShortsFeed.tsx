@@ -171,18 +171,22 @@ export const ShortsFeed: React.FC = () => {
                   watchedTodayCount: newWatchedTodayCount
               }));
 
-              // AUTOMATIC DIRECT LINK AD TRIGGER
-              if (settings && newWatchedTodayCount > 0 && newWatchedTodayCount % settings.adFrequency === 0) {
-                   setTimeout(() => {
-                       if (isMountedRef.current) setShowAd(true);
-                   }, 1000); 
+              // AUTOMATIC AD TRIGGER
+              const freq = settings?.adFrequency || 10;
+              if (newWatchedTodayCount > 0 && newWatchedTodayCount % freq === 0) {
+                  // Wait slightly for reward animation then force ad
+                  setTimeout(() => {
+                      if (isMountedRef.current) {
+                          setShowAd(true);
+                      }
+                  }, 1500);
               }
 
               setTimeout(() => {
                   if (isMountedRef.current) {
                       setVideos(prev => prev.filter(v => v.id !== videoId));
                   }
-              }, 2000);
+              }, 2500);
           }
       } catch (e) {
           console.error(e);
