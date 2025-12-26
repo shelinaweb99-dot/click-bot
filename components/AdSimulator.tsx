@@ -20,18 +20,22 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
   const timeoutRef = useRef<any>(null);
 
   const startProcess = async () => {
+    // Check if ads are globally disabled
+    if (settings.isGlobalEnabled === false) {
+      onComplete();
+      return;
+    }
+
     setStatus('LOADING');
     setErrorMsg('');
 
     // --- PRIORITY: DYNAMIC AD ROTATION / DIRECT LINK ---
-    // If rotation is enabled or type is DIRECT, we use the Direct Link mode
     if (settings.rotation?.isEnabled || type === 'DIRECT') {
         try {
             const link = await getRotatedLink();
             if (link) {
                 const tg = (window as any).Telegram?.WebApp;
                 
-                // Use Telegram's native link opener to avoid popup blockers
                 if (tg && typeof tg.openLink === 'function') {
                     tg.openLink(link);
                 } else {
@@ -39,7 +43,6 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
                 }
                 
                 setStatus('SHOWING');
-                // AUTO-COMPLETE: Credit user after 3 seconds without requiring a click
                 timeoutRef.current = setTimeout(() => {
                     onComplete();
                 }, 3000);
@@ -49,7 +52,6 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
         } catch (e: any) {
             setStatus('ERROR');
             setErrorMsg(e.message || 'Direct link failure.');
-            // Even on error, auto-complete after delay so user isn't stuck
             setTimeout(onComplete, 2000);
         }
         return;
@@ -57,7 +59,6 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
 
     // --- MODE 2: TELEGRAM SDK (ZONE ID) ---
     let zoneId = '';
-    // Decide which zone to use
     if (type === 'REWARDED_INTERSTITIAL' && settings.monetagRewardedInterstitialId) {
         zoneId = settings.monetagRewardedInterstitialId;
     } else if (type === 'REWARDED_POPUP' && settings.monetagRewardedPopupId) {
@@ -75,7 +76,6 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
         return;
     }
 
-    // 1. Ensure Script Injection
     const scriptId = `monetag-sdk-${zoneId}`;
     if (!document.getElementById(scriptId)) {
         const script = document.createElement('script');
@@ -86,9 +86,8 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
         document.head.appendChild(script);
     }
 
-    // 2. Poll for SDK activation function
     let attempts = 0;
-    const maxAttempts = 80; // 8 seconds total polling
+    const maxAttempts = 80; 
     
     pollingInterval.current = setInterval(() => {
         attempts++;
@@ -99,7 +98,6 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
             try {
                 (window as any)[funcName]();
                 setStatus('SHOWING');
-                // AUTO-COMPLETE: Standard rewarded ad wait time then credit points
                 timeoutRef.current = setTimeout(onComplete, 15000); 
             } catch (e) {
                 setStatus('ERROR');
@@ -109,8 +107,7 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
         } else if (attempts >= maxAttempts) {
             clearInterval(pollingInterval.current);
             setStatus('ERROR');
-            setErrorMsg('SDK Load Timeout. Skipping to reward...');
-            // FAIL-SAFE: If ad fails to load, still credit user so they don't complain
+            setErrorMsg('SDK Load Timeout.');
             setTimeout(onComplete, 2000);
         }
     }, 100);
@@ -130,7 +127,7 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  if (!isOpen || settings.isGlobalEnabled === false) return null;
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-3xl flex items-center justify-center p-6 animate-in fade-in duration-500">

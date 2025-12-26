@@ -58,6 +58,7 @@ export interface AdRotationConfig {
 export type MonetagAdType = 'REWARDED_INTERSTITIAL' | 'REWARDED_POPUP' | 'INTERSTITIAL' | 'DIRECT';
 
 export interface AdSettings {
+  isGlobalEnabled?: boolean;
   activeProvider: AdProvider;
   monetagDirectLink: string;
   monetagAdTag?: string;
