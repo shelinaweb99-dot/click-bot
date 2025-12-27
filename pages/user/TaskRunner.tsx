@@ -90,7 +90,8 @@ export const TaskRunner: React.FC = () => {
             : task.url;
             
         if (tg && typeof tg.openLink === 'function') {
-            tg.openLink(linkWithUid);
+            // Updated: Force in-app web view using Telegram's openLink options
+            tg.openLink(linkWithUid, { try_instant_view: true });
         } else {
             window.open(linkWithUid, '_blank');
         }
