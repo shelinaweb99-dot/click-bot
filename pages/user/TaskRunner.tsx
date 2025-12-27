@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Task, TaskType, AdSettings } from '../../types';
 import { getTasks, verifyAndCompleteTask, getCurrentUserId, getAdSettings, getTransactions, getProtectedFile } from '../../services/mockDb';
-import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, Timer, ShieldAlert, X, Info, Lock, Download, ExternalLink, Zap, FileText } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, Timer, ShieldAlert, X, Info, Lock, Download, ExternalLink, Zap, FileText, Minimize2 } from 'lucide-react';
 import { AdSimulator } from '../../components/AdSimulator';
 import { NativeBannerModal } from '../../components/NativeBannerModal';
 
@@ -89,16 +89,20 @@ export const TaskRunner: React.FC = () => {
             ? `${task.url}${task.url.includes('?') ? '&' : '?'}uid=${getCurrentUserId()}` 
             : task.url;
             
-        if (tg && typeof tg.openLink === 'function') {
-            // Updated: Force in-app web view using Telegram's openLink options
-            tg.openLink(linkWithUid, { try_instant_view: true });
-        } else {
-            window.open(linkWithUid, '_blank');
-        }
-        
-        if (task.type !== TaskType.SHORTLINK) {
-            setIsTimerRunning(true);
+        // For Website tasks, try to show in an internal viewer first
+        if (task.type === TaskType.WEBSITE) {
             setShowViewer(true);
+            setIsTimerRunning(true);
+        } else {
+            if (tg && typeof tg.openLink === 'function') {
+                tg.openLink(linkWithUid);
+            } else {
+                window.open(linkWithUid, '_blank');
+            }
+            
+            if (task.type !== TaskType.SHORTLINK) {
+                setIsTimerRunning(true);
+            }
         }
     }
   };
@@ -121,7 +125,6 @@ export const TaskRunner: React.FC = () => {
         if (result.success) {
             setIsCompleted(true);
             window.dispatchEvent(new Event('db_change'));
-            // Trigger native banner after points are awarded
             if (adSettings?.nativeBanner?.isEnabled) {
                 setShowNativeBanner(true);
             }
@@ -234,6 +237,9 @@ export const TaskRunner: React.FC = () => {
                                 <Zap size={14} />
                                 <span className="text-[9px] font-black uppercase tracking-[0.3em]">Monitoring Activity...</span>
                             </div>
+                            {task.type === TaskType.WEBSITE && (
+                                <button onClick={() => setShowViewer(true)} className="text-blue-400 text-[10px] font-black uppercase underline">Re-open Viewer</button>
+                            )}
                         </div>
                     ) : (
                         <button 
@@ -243,22 +249,42 @@ export const TaskRunner: React.FC = () => {
                             VERIFY & CLAIM
                         </button>
                     )}
-                    
-                    {task.type === TaskType.SHORTLINK && !isTimerRunning && (
-                        <div className="flex flex-col items-center gap-3 py-4">
-                             <div className="flex items-center gap-2 text-amber-500">
-                                <Loader2 className="animate-spin" size={14} />
-                                <span className="text-[8px] font-black uppercase tracking-widest italic">Waiting for postback...</span>
-                             </div>
-                             <button onClick={checkCompletion} className="text-gray-700 hover:text-gray-500 text-[8px] font-black uppercase tracking-widest underline decoration-2 underline-offset-4">
-                                Manual Refresh Status
-                             </button>
-                        </div>
-                    )}
                   </div>
               )}
           </div>
       </div>
+
+      {/* Internal Web Viewer for Website Tasks */}
+      {showViewer && task.type === TaskType.WEBSITE && (
+          <div className="fixed inset-0 z-[100] bg-black flex flex-col">
+              <div className="bg-[#1e293b] p-4 flex justify-between items-center border-b border-white/5">
+                   <div className="flex items-center gap-2 text-white">
+                       <Globe size={16} className="text-blue-400" />
+                       <span className="text-[10px] font-black uppercase tracking-widest truncate max-w-[200px]">{task.title}</span>
+                   </div>
+                   <div className="flex items-center gap-4">
+                       <div className="bg-black/40 px-3 py-1.5 rounded-lg border border-white/5 text-blue-400 font-mono text-sm">
+                           {timeLeft}s
+                       </div>
+                       <button onClick={() => setShowViewer(false)} className="p-2 bg-white/5 rounded-lg text-gray-400">
+                           <Minimize2 size={20} />
+                       </button>
+                   </div>
+              </div>
+              <div className="flex-1 bg-white relative">
+                  <iframe 
+                    src={task.url} 
+                    className="w-full h-full border-none" 
+                    title="Task Viewer"
+                    sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                  />
+                  {/* Overlay to catch clicks if needed, but we want the user to interact */}
+              </div>
+              <div className="p-4 bg-[#0b1120] text-center">
+                  <p className="text-[8px] text-gray-500 font-black uppercase tracking-widest">Keep this window open to complete verification</p>
+              </div>
+          </div>
+      )}
 
       <AdSimulator 
         isOpen={showAd} 

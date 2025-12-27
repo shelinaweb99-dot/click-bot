@@ -42,18 +42,20 @@ export const NativeBannerModal: React.FC<NativeBannerModalProps> = ({ isOpen, on
   if (!isOpen || !banner?.isEnabled) return null;
 
   return (
-    <div className="fixed inset-0 z-[110] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">
-      <div className="bg-[#1e293b] w-full max-w-sm rounded-[2.5rem] sm:rounded-[3rem] border border-white/10 shadow-2xl relative flex flex-col max-h-[90vh] overflow-y-auto no-scrollbar animate-in zoom-in duration-300">
-        
-        {/* Absolute Top Close Button - Highest Z-Index to ensure clickability */}
-        <button 
-          onClick={onClose}
-          className="absolute top-4 right-4 z-[130] p-2 bg-black/60 hover:bg-black/80 backdrop-blur-md rounded-full text-white shadow-xl border border-white/10 transition-all active:scale-90"
-          aria-label="Close Ad"
-        >
-          <X size={20} />
-        </button>
+    <div className="fixed inset-0 z-[9998] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">
+      
+      {/* TRULY GLOBAL FIXED CLOSE BUTTON - Highest Z-Index possible */}
+      <button 
+        onClick={onClose}
+        className="fixed top-6 right-6 z-[9999] p-3 bg-red-600 hover:bg-red-700 text-white rounded-full shadow-[0_0_20px_rgba(220,38,38,0.5)] border-2 border-white/20 transition-all active:scale-90 flex items-center justify-center"
+        style={{ width: '50px', height: '50px' }}
+        aria-label="Force Close Ad"
+      >
+        <X size={28} strokeWidth={3} />
+      </button>
 
+      <div className="bg-[#1e293b] w-full max-w-sm rounded-[2.5rem] sm:rounded-[3rem] border border-white/10 shadow-2xl relative flex flex-col max-h-[85vh] overflow-y-auto no-scrollbar animate-in zoom-in duration-300">
+        
         {/* Header */}
         <div className="p-6 border-b border-white/5 flex justify-between items-center bg-blue-600/5 sticky top-0 z-20 backdrop-blur-md">
           <div className="flex items-center gap-2">
@@ -67,11 +69,11 @@ export const NativeBannerModal: React.FC<NativeBannerModalProps> = ({ isOpen, on
             <p className="text-gray-500 text-[9px] font-black uppercase tracking-[0.2em] mb-4 text-center">Sponsored Content</p>
             {/* The ref container where the script injects content */}
             <div ref={containerRef} className="w-full flex justify-center min-h-[250px] pointer-events-auto" />
-            <p className="text-gray-600 text-[8px] font-black uppercase tracking-widest mt-6 italic">Support our network to earn more</p>
+            <p className="text-gray-600 text-[8px] font-black uppercase tracking-widest mt-6 italic text-center">Support our network to unlock rewards</p>
         </div>
 
-        {/* Footer - Static at bottom of scrollable content */}
-        <div className="p-6 bg-black/20 flex flex-col gap-4 border-t border-white/5">
+        {/* Footer */}
+        <div className="p-6 bg-black/40 flex flex-col gap-4 border-t border-white/5 mt-auto">
             <div className="flex items-center justify-center gap-2 text-blue-500/50">
                 <Zap size={14} />
                 <span className="text-[9px] font-black uppercase tracking-widest">Verification Complete</span>
@@ -80,7 +82,7 @@ export const NativeBannerModal: React.FC<NativeBannerModalProps> = ({ isOpen, on
                 onClick={onClose}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-[11px] uppercase tracking-[0.2em] py-4 rounded-2xl shadow-xl transition-all active:scale-95 border border-blue-400/20"
             >
-                Claim Points
+                Done / Claim Points
             </button>
         </div>
       </div>
