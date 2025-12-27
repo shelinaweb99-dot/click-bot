@@ -1,27 +1,39 @@
 
 import React, { useState, useEffect } from 'react';
-import { getCurrentUserId, getAdSettings, playMiniGame } from '../../../services/mockDb';
-import { AdSettings } from '../../../types';
+import { getCurrentUserId, getAdSettings, playMiniGame, getUserById, getGameSettings } from '../../../services/mockDb';
+import { AdSettings, User } from '../../../types';
 import { AdSimulator } from '../../../components/AdSimulator';
-import { ArrowLeft, Lock, Unlock, Trophy, Loader2, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Lock, Unlock, Trophy, Loader2, ShieldCheck, Dices } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const GuessNumber: React.FC = () => {
   const [guess, setGuess] = useState('');
   const [adSettings, setAdSettings] = useState<AdSettings | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [gameConf, setGameConf] = useState<{dailyLimit: number} | null>(null);
   const [showAd, setShowAd] = useState(false);
   const [loadingGame, setLoadingGame] = useState(false);
-  const [result, setResult] = useState<{success: boolean, reward: number, message: string, left: number} | null>(null);
+  const [result, setResult] = useState<{success: boolean, reward: number, message: string} | null>(null);
   const navigate = useNavigate();
   const userId = getCurrentUserId();
 
-  useEffect(() => {
-    const init = async () => {
-        const ads = await getAdSettings();
+  const loadData = async () => {
+    if (!userId) return;
+    try {
+        const [u, ads, g] = await Promise.all([
+            getUserById(userId),
+            getAdSettings(),
+            getGameSettings()
+        ]);
+        setUser(u);
         setAdSettings(ads);
-    };
-    init();
-  }, []);
+        setGameConf(g?.guess || { dailyLimit: 10 });
+    } catch (e) { console.error(e); }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [userId]);
 
   const handleKeyPress = (num: string) => {
       if (loadingGame) return;
@@ -30,12 +42,21 @@ export const GuessNumber: React.FC = () => {
 
   const handleUnlock = async () => {
       if (!guess || loadingGame || !userId) return;
+      
+      const today = new Date().toISOString().split('T')[0];
+      const played = (user?.gameStats?.lastPlayedDate === today) ? (user?.gameStats?.guessCount || 0) : 0;
+      if (gameConf && played >= gameConf.dailyLimit) {
+          alert(`Daily vault breach limit (${gameConf.dailyLimit}) reached!`);
+          return;
+      }
+
       setLoadingGame(true);
       try {
           const res = await playMiniGame(userId, 'guess');
           setResult(res);
-      } catch (e) {
-          alert("Connection error. Please try again.");
+          loadData();
+      } catch (e: any) {
+          alert(e.message || "Breach failed. System offline.");
       } finally {
           setLoadingGame(false);
       }
@@ -47,18 +68,28 @@ export const GuessNumber: React.FC = () => {
       setShowAd(true);
   };
 
-  if (!adSettings) return (
+  if (!adSettings || !user) return (
     <div className="h-[calc(100vh-160px)] flex items-center justify-center bg-[#030712]">
         <Loader2 className="animate-spin text-blue-500" size={32} />
     </div>
   );
 
+  const today = new Date().toISOString().split('T')[0];
+  const playedToday = (user.gameStats?.lastPlayedDate === today) ? (user.gameStats?.guessCount || 0) : 0;
+  const remaining = Math.max(0, (gameConf?.dailyLimit || 10) - playedToday);
+
   return (
     <div className="min-h-[calc(100vh-160px)] w-full flex flex-col items-center py-6 px-4 bg-[#030712] animate-in fade-in duration-500">
         <div className="w-full max-w-md flex flex-col items-center space-y-8">
-            <button onClick={() => navigate('/games')} className="self-start text-gray-500 hover:text-white flex items-center gap-2 font-black text-[10px] uppercase tracking-widest transition-colors mb-4">
-                <ArrowLeft size={16} /> Back to Games
-            </button>
+            <div className="w-full flex justify-between items-center">
+                <button onClick={() => navigate('/games')} className="text-gray-500 hover:text-white flex items-center gap-2 font-black text-[10px] uppercase tracking-widest transition-colors">
+                    <ArrowLeft size={16} /> Exit
+                </button>
+                <div className="bg-blue-600/10 px-4 py-2 rounded-xl border border-blue-500/20 flex items-center gap-2">
+                    <Dices size={14} className="text-blue-500" />
+                    <span className="text-white font-black text-[10px] uppercase tracking-widest">{remaining} Breaches Left</span>
+                </div>
+            </div>
 
             <div className="text-center space-y-2">
                 <h1 className="text-4xl font-black text-white tracking-tighter uppercase">VAULT BREAKER</h1>
@@ -68,7 +99,6 @@ export const GuessNumber: React.FC = () => {
             <div className="w-full bg-gray-900/40 backdrop-blur-2xl p-8 rounded-[3rem] border border-white/5 shadow-2xl space-y-8 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-50"></div>
                 
-                {/* Display Area */}
                 <div className="bg-black/60 p-8 rounded-[2rem] border border-white/5 text-center shadow-inner relative group">
                     <div className="absolute top-3 left-1/2 -translate-x-1/2">
                         {guess ? <Unlock className="text-blue-500" size={16} /> : <Lock className="text-gray-700" size={16} />}
@@ -79,7 +109,6 @@ export const GuessNumber: React.FC = () => {
                     <p className="text-[9px] font-black text-gray-600 uppercase tracking-widest mt-2">Authenticated Input</p>
                 </div>
 
-                {/* Grid */}
                 <div className="grid grid-cols-3 gap-3">
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(num => (
                         <button 
@@ -97,10 +126,10 @@ export const GuessNumber: React.FC = () => {
 
                 <button 
                     onClick={handleUnlock}
-                    disabled={!guess || loadingGame}
+                    disabled={!guess || loadingGame || remaining === 0}
                     className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 text-white font-black text-xs uppercase tracking-[0.3em] py-5 rounded-2xl shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2 border border-blue-400/20"
                 >
-                    {loadingGame ? <Loader2 className="animate-spin" size={18} /> : 'BREACH VAULT'}
+                    {remaining === 0 ? 'LIMIT REACHED' : (loadingGame ? <Loader2 className="animate-spin" size={18} /> : 'BREACH VAULT')}
                 </button>
             </div>
 
@@ -109,7 +138,6 @@ export const GuessNumber: React.FC = () => {
             </div>
         </div>
 
-        {/* Result Modal */}
         {result && (
             <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in zoom-in duration-300">
                 <div className="bg-gray-900 w-full max-w-sm rounded-[3rem] border border-white/5 p-10 text-center space-y-8 shadow-2xl">

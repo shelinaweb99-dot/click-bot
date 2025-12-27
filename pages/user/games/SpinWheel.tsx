@@ -1,30 +1,53 @@
 
 import React, { useState, useEffect } from 'react';
-import { getCurrentUserId, getAdSettings, playMiniGame } from '../../../services/mockDb';
-import { AdSettings } from '../../../types';
+import { getCurrentUserId, getAdSettings, playMiniGame, getUserById, getGameSettings } from '../../../services/mockDb';
+import { AdSettings, User, GameSettings } from '../../../types';
 import { AdSimulator } from '../../../components/AdSimulator';
-import { ArrowLeft, Trophy, Star, Loader2 } from 'lucide-react';
+import { ArrowLeft, Trophy, Star, Loader2, Disc } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export const SpinWheel: React.FC = () => {
   const [spinning, setSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [adSettings, setAdSettings] = useState<AdSettings | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [gameConf, setGameConf] = useState<{dailyLimit: number} | null>(null);
   const [showAd, setShowAd] = useState(false);
-  const [result, setResult] = useState<{success: boolean, reward: number, message: string, left: number} | null>(null);
+  const [result, setResult] = useState<{success: boolean, reward: number, message: string, remaining?: number} | null>(null);
   const navigate = useNavigate();
   const userId = getCurrentUserId();
 
-  useEffect(() => {
-    const init = async () => {
-        const ads = await getAdSettings();
+  const loadUserData = async () => {
+    if (!userId) return;
+    try {
+        const [u, ads, g] = await Promise.all([
+            getUserById(userId),
+            getAdSettings(),
+            getGameSettings()
+        ]);
+        setUser(u);
         setAdSettings(ads);
-    };
-    init();
-  }, []);
+        setGameConf(g?.spin || { dailyLimit: 10 });
+    } catch (e) { console.error(e); }
+  };
+
+  useEffect(() => {
+    loadUserData();
+  }, [userId]);
 
   const handleSpin = async () => {
     if (spinning || !userId) return;
+
+    // Local pre-check for limit
+    const today = new Date().toISOString().split('T')[0];
+    const stats = user?.gameStats;
+    const count = (stats?.lastPlayedDate === today) ? (stats?.spinCount || 0) : 0;
+    
+    if (gameConf && count >= gameConf.dailyLimit) {
+        alert(`You have used all ${gameConf.dailyLimit} daily spins!`);
+        return;
+    }
+
     setSpinning(true);
     setResult(null);
 
@@ -44,23 +67,35 @@ export const SpinWheel: React.FC = () => {
         const res = await playMiniGame(userId, 'spin');
         setResult(res);
         setSpinning(false);
-    } catch (e) {
+        loadUserData(); // Update local counts
+    } catch (e: any) {
+        alert(e.message || "Session error.");
         setSpinning(false);
     }
   };
 
-  if (!adSettings) return (
+  if (!adSettings || !user) return (
     <div className="h-[calc(100vh-160px)] flex items-center justify-center bg-[#030712]">
         <Loader2 className="animate-spin text-purple-500" size={32} />
     </div>
   );
 
+  const today = new Date().toISOString().split('T')[0];
+  const playedToday = (user.gameStats?.lastPlayedDate === today) ? (user.gameStats?.spinCount || 0) : 0;
+  const remaining = Math.max(0, (gameConf?.dailyLimit || 10) - playedToday);
+
   return (
     <div className="min-h-[calc(100vh-160px)] w-full flex flex-col items-center py-6 px-4 bg-[#030712] animate-in fade-in duration-500">
         <div className="w-full max-w-md flex flex-col items-center space-y-8">
-            <button onClick={() => navigate('/games')} className="self-start text-gray-500 hover:text-white flex items-center gap-2 font-black text-[10px] uppercase tracking-widest transition-colors">
-                <ArrowLeft size={16} /> Dashboard
-            </button>
+            <div className="w-full flex justify-between items-center">
+                <button onClick={() => navigate('/games')} className="text-gray-500 hover:text-white flex items-center gap-2 font-black text-[10px] uppercase tracking-widest transition-colors">
+                    <ArrowLeft size={16} /> Exit
+                </button>
+                <div className="bg-purple-600/10 px-4 py-2 rounded-xl border border-purple-500/20 flex items-center gap-2">
+                    <Disc size={14} className="text-purple-500" />
+                    <span className="text-white font-black text-[10px] uppercase tracking-widest">{remaining} Spins Left</span>
+                </div>
+            </div>
 
             <div className="text-center">
                 <h1 className="text-4xl font-black text-white tracking-tighter">SPIN & WIN</h1>
@@ -68,12 +103,10 @@ export const SpinWheel: React.FC = () => {
             </div>
 
             <div className="relative w-full aspect-square max-w-[320px] flex items-center justify-center">
-                {/* Pointer */}
                 <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-20">
                     <div className="w-8 h-10 bg-white rounded-full border-4 border-purple-600 shadow-xl clip-path-polygon-[50%_100%,0_0,100%_0]"></div>
                 </div>
 
-                {/* Wheel */}
                 <div className="w-full h-full bg-gray-900 rounded-full border-8 border-white/5 shadow-2xl relative overflow-hidden flex items-center justify-center">
                     <div 
                         className="w-[95%] h-[95%] rounded-full transition-transform duration-[4000ms] cubic-bezier(0.15, 0, 0.15, 1)"
@@ -82,7 +115,6 @@ export const SpinWheel: React.FC = () => {
                             background: 'conic-gradient(#ef4444 0deg 45deg, #3b82f6 45deg 90deg, #10b981 90deg 135deg, #f59e0b 135deg 180deg, #8b5cf6 180deg 225deg, #ec4899 225deg 270deg, #06b6d4 270deg 315deg, #6366f1 315deg 360deg)' 
                         }}
                     ></div>
-                    {/* Hub */}
                     <div className="absolute w-16 h-16 bg-gray-900 rounded-full border-4 border-purple-600 flex items-center justify-center shadow-2xl z-10">
                         <Star className="text-white fill-white" size={24} />
                     </div>
@@ -92,12 +124,12 @@ export const SpinWheel: React.FC = () => {
             <div className="w-full space-y-4">
                 <button 
                     onClick={handleSpin}
-                    disabled={spinning}
+                    disabled={spinning || remaining === 0}
                     className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-800 text-white font-black text-xs uppercase tracking-[0.3em] py-5 rounded-[2rem] shadow-xl transition-all active:scale-95"
                 >
-                    {spinning ? 'SPINNING...' : 'START SPIN'}
+                    {remaining === 0 ? 'LIMIT REACHED' : (spinning ? 'SPINNING...' : 'START SPIN')}
                 </button>
-                <p className="text-gray-700 text-[9px] font-black uppercase tracking-widest text-center italic">Rewards are synced to your node profile</p>
+                <p className="text-gray-700 text-[9px] font-black uppercase tracking-widest text-center italic">Daily Reset at 00:00 UTC</p>
             </div>
         </div>
 

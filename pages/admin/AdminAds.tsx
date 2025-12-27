@@ -18,7 +18,8 @@ import {
   ToggleLeft,
   ToggleRight,
   ShieldAlert,
-  CreditCard
+  CreditCard,
+  FileCode
 } from 'lucide-react';
 
 export const AdminAds: React.FC = () => {
@@ -49,6 +50,10 @@ export const AdminAds: React.FC = () => {
         isEnabled: false,
         scriptHtml: '',
         height: 50
+    },
+    nativeBanner: {
+        isEnabled: false,
+        scriptHtml: ''
     }
   };
 
@@ -70,6 +75,10 @@ export const AdminAds: React.FC = () => {
             bannerAd: {
                 ...defaultAdSettings.bannerAd!,
                 ...(data?.bannerAd || {})
+            },
+            nativeBanner: {
+                ...defaultAdSettings.nativeBanner!,
+                ...(data?.nativeBanner || {})
             }
         });
       }
@@ -98,23 +107,6 @@ export const AdminAds: React.FC = () => {
     } finally {
       if (isMounted.current) setIsSaving(false);
     }
-  };
-
-  const addLink = () => {
-    if (!newUrl) return;
-    const newLink: AdLink = { id: 'link_' + Date.now(), url: newUrl, provider: 'MONETAG', isEnabled: true };
-    setSettings({ 
-        ...settings, 
-        rotation: { ...settings.rotation!, links: [...(settings.rotation?.links || []), newLink] } 
-    });
-    setNewUrl('');
-  };
-
-  const removeLink = (id: string) => {
-    setSettings({
-        ...settings,
-        rotation: { ...settings.rotation!, links: (settings.rotation?.links || []).filter(l => l.id !== id) }
-    });
   };
 
   if (loading) return (
@@ -217,6 +209,43 @@ export const AdminAds: React.FC = () => {
             </div>
         </div>
 
+        {/* Task Completion Native Banner */}
+        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl lg:col-span-2 space-y-8">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="bg-orange-500/10 p-2 rounded-lg text-orange-500 border border-orange-500/10">
+                        <FileCode size={20} />
+                    </div>
+                    <h2 className="text-xl font-black text-white uppercase tracking-tight">Task Native Banner</h2>
+                </div>
+                <button 
+                    onClick={() => setSettings({ ...settings, nativeBanner: { ...settings.nativeBanner!, isEnabled: !settings.nativeBanner?.isEnabled } })}
+                    className={`transition-all ${settings.nativeBanner?.isEnabled ? 'text-orange-500' : 'text-gray-600'}`}
+                >
+                    {settings.nativeBanner?.isEnabled ? <ToggleRight size={48} /> : <ToggleLeft size={48} />}
+                </button>
+            </div>
+
+            <div className="bg-orange-500/5 p-4 rounded-2xl border border-orange-500/10 flex gap-3">
+              <Info className="text-orange-500 shrink-0" size={18} />
+              <p className="text-gray-400 text-[10px] leading-relaxed">
+                 Configure your Native Banner script (e.g., Adsterra Native). This ad pops up automatically after a user successfully completes any task.
+              </p>
+            </div>
+
+            <div className="space-y-6">
+                <div className="space-y-2">
+                    <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Native Ad Script HTML</label>
+                    <textarea 
+                        className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-orange-500/50 outline-none font-mono text-[10px] shadow-inner h-48"
+                        placeholder="Paste your Native Banner script HTML here..."
+                        value={settings.nativeBanner?.scriptHtml || ''}
+                        onChange={e => setSettings({ ...settings, nativeBanner: { ...settings.nativeBanner!, scriptHtml: e.target.value } })}
+                    />
+                </div>
+            </div>
+        </div>
+
         {/* Telegram SDK Mode */}
         <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl space-y-8">
             <div className="flex items-center gap-3">
@@ -282,13 +311,6 @@ export const AdminAds: React.FC = () => {
                 </div>
             </div>
         </div>
-      </div>
-      
-      <div className="bg-blue-600/5 p-10 rounded-[3rem] border border-blue-500/10 text-center">
-          <ShieldCheck size={40} className="text-blue-500 mx-auto mb-4 opacity-40" />
-          <p className="text-gray-500 text-[11px] font-black uppercase tracking-widest leading-relaxed">
-              Monetization Protocols Verified &bull; System Active
-          </p>
       </div>
     </div>
   );

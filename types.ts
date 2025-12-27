@@ -74,6 +74,10 @@ export interface AdSettings {
     scriptHtml: string;
     height: number;
   };
+  nativeBanner?: {
+    isEnabled: boolean;
+    scriptHtml: string;
+  };
 }
 
 export interface SystemSettings {

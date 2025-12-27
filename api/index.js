@@ -53,6 +53,13 @@ const UserSchema = new mongoose.Schema({
     referredBy: String,
     referralCount: { type: Number, default: 0 },
     referralEarnings: { type: Number, default: 0 },
+    gameStats: {
+        lastPlayedDate: String,
+        spinCount: { type: Number, default: 0 },
+        scratchCount: { type: Number, default: 0 },
+        guessCount: { type: Number, default: 0 },
+        lotteryCount: { type: Number, default: 0 }
+    },
     shortsData: {
         lastWatched: { type: Map, of: String, default: {} },
         watchedTodayCount: { type: Number, default: 0 },
@@ -288,17 +295,41 @@ export default async function handler(req, res) {
 
             case 'playGame': {
                 const { gameType } = data;
+                const today = new Date().toISOString().split('T')[0];
                 const gameSettings = await Setting.findById('games').lean();
-                const config = gameSettings?.data?.[gameType] || { minReward: 1, maxReward: 10 };
+                const config = gameSettings?.data?.[gameType] || { minReward: 1, maxReward: 10, dailyLimit: 10, isEnabled: true };
+                
+                if (!config.isEnabled) return res.status(400).json({ message: "Game is disabled." });
+
+                // Check/Reset Stats
+                let stats = currentUser.gameStats || { lastPlayedDate: today, spinCount: 0, scratchCount: 0, guessCount: 0, lotteryCount: 0 };
+                if (stats.lastPlayedDate !== today) {
+                    stats = { lastPlayedDate: today, spinCount: 0, scratchCount: 0, guessCount: 0, lotteryCount: 0 };
+                }
+
+                const countKey = `${gameType}Count`;
+                const currentCount = stats[countKey] || 0;
+
+                if (currentCount >= config.dailyLimit) {
+                    return res.status(400).json({ message: `Daily play limit (${config.dailyLimit}) reached for ${gameType}.` });
+                }
+
                 const reward = Math.floor(Math.random() * (config.maxReward - config.minReward + 1)) + config.minReward;
                 
-                await User.updateOne({ id: currentUser.id }, { $inc: { balance: reward } });
+                stats[countKey] = currentCount + 1;
+                
+                await User.updateOne({ id: currentUser.id }, { 
+                    $inc: { balance: reward },
+                    $set: { gameStats: stats }
+                });
+
                 await Transaction.create({
-                    id: 'tx_g_' + Date.now(),
+                    id: 'tx_g_' + Date.now() + '_' + currentUser.id,
                     userId: currentUser.id, amount: reward, type: 'GAME',
                     description: `Won ${reward} in ${gameType}`, date: new Date().toISOString()
                 });
-                return res.json({ success: true, reward });
+                
+                return res.json({ success: true, reward, remaining: config.dailyLimit - stats[countKey] });
             }
 
             case 'createWithdrawal': {

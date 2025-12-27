@@ -3,9 +3,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Task, TaskType, AdSettings } from '../../types';
 import { getTasks, verifyAndCompleteTask, getCurrentUserId, getAdSettings, getTransactions, getProtectedFile } from '../../services/mockDb';
-// Fixed: Added FileText to imports
 import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, Timer, ShieldAlert, X, Info, Lock, Download, ExternalLink, Zap, FileText } from 'lucide-react';
 import { AdSimulator } from '../../components/AdSimulator';
+import { NativeBannerModal } from '../../components/NativeBannerModal';
 
 export const TaskRunner: React.FC = () => {
   const { taskId } = useParams();
@@ -14,6 +14,7 @@ export const TaskRunner: React.FC = () => {
   const [timeLeft, setTimeLeft] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [showAd, setShowAd] = useState(false);
+  const [showNativeBanner, setShowNativeBanner] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [adSettings, setAdSettings] = useState<AdSettings | null>(null);
   const [showViewer, setShowViewer] = useState(false);
@@ -30,7 +31,6 @@ export const TaskRunner: React.FC = () => {
       
       if (done && isMounted.current) {
           setIsCompleted(true);
-          // If it's a shortlink, automatically try to fetch file data
           if (task?.type === TaskType.SHORTLINK) {
               const fileRes = await getProtectedFile(taskId);
               if (fileRes.success && isMounted.current) {
@@ -58,7 +58,6 @@ export const TaskRunner: React.FC = () => {
     };
     init();
 
-    // Long poll for shortlink completion if we are on this page
     const interval = setInterval(() => {
         if (!isCompleted && task?.type === TaskType.SHORTLINK) {
             checkCompletion();
@@ -121,6 +120,10 @@ export const TaskRunner: React.FC = () => {
         if (result.success) {
             setIsCompleted(true);
             window.dispatchEvent(new Event('db_change'));
+            // Trigger native banner after points are awarded
+            if (adSettings?.nativeBanner?.isEnabled) {
+                setShowNativeBanner(true);
+            }
         }
     } catch (e: any) {
         alert(e.message || "Manual verification failed.");
@@ -261,6 +264,14 @@ export const TaskRunner: React.FC = () => {
         onComplete={handleAdComplete} 
         settings={adSettings} 
       />
+
+      {adSettings && (
+        <NativeBannerModal 
+          isOpen={showNativeBanner} 
+          onClose={() => setShowNativeBanner(false)} 
+          settings={adSettings} 
+        />
+      )}
     </div>
   );
 };

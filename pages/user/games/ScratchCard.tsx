@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { getCurrentUserId, getAdSettings, playMiniGame } from '../../../services/mockDb';
-import { AdSettings } from '../../../types';
+import { getCurrentUserId, getAdSettings, playMiniGame, getUserById, getGameSettings } from '../../../services/mockDb';
+import { AdSettings, User } from '../../../types';
 import { AdSimulator } from '../../../components/AdSimulator';
 import { ArrowLeft, Gift, Sparkles, Trophy, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -9,46 +9,77 @@ import { useNavigate } from 'react-router-dom';
 export const ScratchCard: React.FC = () => {
   const [scratched, setScratched] = useState(false);
   const [adSettings, setAdSettings] = useState<AdSettings | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [gameConf, setGameConf] = useState<{dailyLimit: number} | null>(null);
   const [showAd, setShowAd] = useState(false);
   const [loadingGame, setLoadingGame] = useState(false);
-  const [result, setResult] = useState<{success: boolean, reward: number, message: string, left: number} | null>(null);
+  const [result, setResult] = useState<{success: boolean, reward: number, message: string} | null>(null);
   const navigate = useNavigate();
   const userId = getCurrentUserId();
 
-  useEffect(() => {
-    const init = async () => {
-        const ads = await getAdSettings();
+  const loadData = async () => {
+    if (!userId) return;
+    try {
+        const [u, ads, g] = await Promise.all([
+            getUserById(userId),
+            getAdSettings(),
+            getGameSettings()
+        ]);
+        setUser(u);
         setAdSettings(ads);
-    };
-    init();
-  }, []);
+        setGameConf(g?.scratch || { dailyLimit: 10 });
+    } catch (e) { console.error(e); }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [userId]);
 
   const handleScratch = async () => {
       if (scratched || loadingGame || !userId) return;
+      
+      const today = new Date().toISOString().split('T')[0];
+      const played = (user?.gameStats?.lastPlayedDate === today) ? (user?.gameStats?.scratchCount || 0) : 0;
+      if (gameConf && played >= gameConf.dailyLimit) {
+          alert(`You reached the limit of ${gameConf.dailyLimit} cards per day!`);
+          return;
+      }
+
       setLoadingGame(true);
       try {
           const res = await playMiniGame(userId, 'scratch');
           setResult(res);
           setScratched(true);
-      } catch (e) {
-          alert("Error connecting to server.");
+          loadData();
+      } catch (e: any) {
+          alert(e.message || "Connection failed.");
       } finally {
           setLoadingGame(false);
       }
   };
 
-  if (!adSettings) return (
+  if (!adSettings || !user) return (
     <div className="h-[calc(100vh-160px)] flex items-center justify-center bg-[#030712]">
         <Loader2 className="animate-spin text-emerald-500" size={32} />
     </div>
   );
 
+  const today = new Date().toISOString().split('T')[0];
+  const playedToday = (user.gameStats?.lastPlayedDate === today) ? (user.gameStats?.scratchCount || 0) : 0;
+  const remaining = Math.max(0, (gameConf?.dailyLimit || 10) - playedToday);
+
   return (
     <div className="min-h-[calc(100vh-160px)] w-full flex flex-col items-center py-6 px-4 bg-[#030712] animate-in fade-in duration-500">
         <div className="w-full max-w-md flex flex-col items-center space-y-8">
-            <button onClick={() => navigate('/games')} className="self-start text-gray-500 hover:text-white flex items-center gap-2 font-black text-[10px] uppercase tracking-widest transition-colors">
-                <ArrowLeft size={16} /> Exit Game
-            </button>
+            <div className="w-full flex justify-between items-center">
+                <button onClick={() => navigate('/games')} className="text-gray-500 hover:text-white flex items-center gap-2 font-black text-[10px] uppercase tracking-widest transition-colors">
+                    <ArrowLeft size={16} /> Exit
+                </button>
+                <div className="bg-emerald-500/10 px-4 py-2 rounded-xl border border-emerald-500/20 flex items-center gap-2">
+                    <Gift size={14} className="text-emerald-500" />
+                    <span className="text-white font-black text-[10px] uppercase tracking-widest">{remaining} Reveals Left</span>
+                </div>
+            </div>
 
             <div className="text-center">
                 <h1 className="text-4xl font-black text-white tracking-tighter uppercase">LUCKY REVEAL</h1>
@@ -101,7 +132,7 @@ export const ScratchCard: React.FC = () => {
                         <span className="text-5xl font-black text-emerald-500 tracking-tighter">+{result.reward}</span>
                         <span className="text-xs text-gray-700 uppercase italic ml-2">Pts</span>
                     </div>
-                    <button onClick={() => { setResult(null); setShowAd(true); }} className="w-full bg-emerald-600 py-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] text-white shadow-2xl active:scale-95 border border-emerald-400/20">
+                    <button onClick={() => { setResult(null); setShowAd(true); setScratched(false); }} className="w-full bg-emerald-600 py-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] text-white shadow-2xl active:scale-95 border border-emerald-400/20">
                         COLLECT REWARD
                     </button>
                 </div>
