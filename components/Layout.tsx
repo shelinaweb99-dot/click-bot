@@ -19,16 +19,30 @@ import {
   Loader2,
   MonitorPlay
 } from 'lucide-react';
-import { logout, getCurrentUserId, getUserRole } from '../services/mockDb';
-import { UserRole } from '../types';
+import { logout, getCurrentUserId, getUserRole, getAdSettings, subscribeToChanges } from '../services/mockDb';
+import { UserRole, AdSettings } from '../types';
+import { AdsterraBanner } from './AdsterraBanner';
 
 export const UserLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
   const isGames = location.pathname.includes('/games');
+  const [adSettings, setAdSettings] = useState<AdSettings | null>(null);
+
+  useEffect(() => {
+    const fetchAds = async () => {
+      const ads = await getAdSettings();
+      setAdSettings(ads);
+    };
+    fetchAds();
+    const unsub = subscribeToChanges(fetchAds);
+    return unsub;
+  }, []);
+
+  const bannerHeight = adSettings?.bannerAd?.isEnabled ? (adSettings.bannerAd.height || 50) : 0;
 
   return (
     <div className="min-h-screen bg-[#0b1120] flex flex-col font-sans">
-      {/* Conditionally hide the standard header for Games to match screenshot */}
+      {/* Header */}
       {!isGames && (
         <header className="bg-[#1e293b] px-4 py-3 sticky top-0 z-50 shadow-lg border-b border-white/5 shrink-0">
           <div className="flex justify-between items-center max-w-2xl mx-auto">
@@ -45,10 +59,17 @@ export const UserLayout: React.FC<{ children: React.ReactNode }> = ({ children }
         </header>
       )}
       
-      <main className={`flex-1 w-full max-w-2xl mx-auto p-4 sm:p-6 pb-28 ${isGames ? 'pt-2' : ''}`}>
+      <main 
+        className={`flex-1 w-full max-w-2xl mx-auto p-4 sm:p-6 ${isGames ? 'pt-2' : ''}`}
+        style={{ paddingBottom: `${6 + (bannerHeight / 4) + 6}rem` }} // Dynamically calc bottom padding
+      >
         {children}
       </main>
 
+      {/* Adsterra Banner */}
+      {adSettings && <AdsterraBanner settings={adSettings} />}
+
+      {/* Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 bg-[#1e293b]/95 backdrop-blur-md border-t border-white/5 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] z-50 h-[4.5rem] sm:h-20 pb-[env(safe-area-inset-bottom)]">
         <div className="flex justify-around items-center h-full max-w-2xl mx-auto px-2">
           <NavLink to="/dashboard" className={({ isActive }) => `flex flex-col items-center gap-1 transition-all flex-1 ${isActive ? 'text-blue-400 scale-105' : 'text-gray-500'}`}>

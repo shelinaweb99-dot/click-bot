@@ -17,7 +17,8 @@ import {
   Layout,
   ToggleLeft,
   ToggleRight,
-  ShieldAlert
+  ShieldAlert,
+  CreditCard
 } from 'lucide-react';
 
 export const AdminAds: React.FC = () => {
@@ -43,6 +44,11 @@ export const AdminAds: React.FC = () => {
         lastRotationTime: 0,
         currentLinkIndex: 0,
         links: []
+    },
+    bannerAd: {
+        isEnabled: false,
+        scriptHtml: '',
+        height: 50
     }
   };
 
@@ -60,6 +66,10 @@ export const AdminAds: React.FC = () => {
                 ...defaultAdSettings.rotation!,
                 ...(data?.rotation || {}),
                 links: data?.rotation?.links || []
+            },
+            bannerAd: {
+                ...defaultAdSettings.bannerAd!,
+                ...(data?.bannerAd || {})
             }
         });
       }
@@ -156,6 +166,57 @@ export const AdminAds: React.FC = () => {
 
       <div className={`grid grid-cols-1 lg:grid-cols-2 gap-8 transition-opacity duration-500 ${!settings.isGlobalEnabled ? 'opacity-30 pointer-events-none grayscale' : ''}`}>
         
+        {/* Adsterra Bottom Banner Hub */}
+        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl lg:col-span-2 space-y-8">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="bg-emerald-500/10 p-2 rounded-lg text-emerald-500 border border-emerald-500/10">
+                        <MonitorPlay size={20} />
+                    </div>
+                    <h2 className="text-xl font-black text-white uppercase tracking-tight">Bottom Banner Hub</h2>
+                </div>
+                <button 
+                    onClick={() => setSettings({ ...settings, bannerAd: { ...settings.bannerAd!, isEnabled: !settings.bannerAd?.isEnabled } })}
+                    className={`transition-all ${settings.bannerAd?.isEnabled ? 'text-emerald-500' : 'text-gray-600'}`}
+                >
+                    {settings.bannerAd?.isEnabled ? <ToggleRight size={48} /> : <ToggleLeft size={48} />}
+                </button>
+            </div>
+
+            <div className="bg-emerald-500/5 p-4 rounded-2xl border border-emerald-500/10 flex gap-3">
+              <Info className="text-emerald-500 shrink-0" size={18} />
+              <p className="text-gray-400 text-[10px] leading-relaxed">
+                 Configure your Adsterra 320x50 or 320x100 banner. This banner remains fixed above the navigation bar.
+              </p>
+            </div>
+
+            <div className="space-y-6">
+                <div className="space-y-2">
+                    <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Banner Script HTML</label>
+                    <textarea 
+                        className="w-full bg-[#0b1120] border border-white/5 text-white p-5 rounded-2xl focus:border-emerald-500/50 outline-none font-mono text-[10px] shadow-inner h-32"
+                        placeholder="Paste Adsterra banner script tags here..."
+                        value={settings.bannerAd?.scriptHtml || ''}
+                        onChange={e => setSettings({ ...settings, bannerAd: { ...settings.bannerAd!, scriptHtml: e.target.value } })}
+                    />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Banner Height (px)</label>
+                    <div className="flex gap-4">
+                        {[50, 100].map(h => (
+                            <button 
+                                key={h}
+                                onClick={() => setSettings({ ...settings, bannerAd: { ...settings.bannerAd!, height: h } })}
+                                className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest border transition-all ${settings.bannerAd?.height === h ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-gray-800 text-gray-500 border-white/5'}`}
+                            >
+                                {h}px
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+
         {/* Telegram SDK Mode */}
         <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl space-y-8">
             <div className="flex items-center gap-3">
@@ -218,52 +279,6 @@ export const AdminAds: React.FC = () => {
                         value={settings.monetagZoneId || ''}
                         onChange={e => setSettings({ ...settings, monetagZoneId: e.target.value })}
                     />
-                </div>
-            </div>
-        </div>
-
-        {/* Dynamic Direct Links (Auto-Open Mode) */}
-        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl lg:col-span-2 space-y-8">
-           <div className="flex items-center gap-3">
-                <div className="bg-purple-500/10 p-2 rounded-lg text-purple-500 border border-purple-500/10">
-                    <RotateCcw size={20} />
-                </div>
-                <h2 className="text-xl font-black text-white uppercase tracking-tight">Auto-Open Direct Links</h2>
-           </div>
-
-           <div className="bg-purple-500/5 p-4 rounded-2xl border border-purple-500/10 flex gap-3">
-              <Info className="text-purple-500 shrink-0" size={18} />
-              <p className="text-gray-400 text-[10px] leading-relaxed">
-                 Direct Links will open **automatically** without any buttons when triggered by the system.
-              </p>
-           </div>
-
-            <div className="space-y-6">
-                <div className="flex gap-2">
-                <input 
-                    type="text" 
-                    placeholder="Paste direct sponsor link URL..." 
-                    className="flex-1 bg-[#0b1120] border border-white/5 text-white p-4 rounded-xl text-[10px] outline-none focus:border-purple-500/50 font-mono shadow-inner"
-                    value={newUrl}
-                    onChange={e => setNewUrl(e.target.value)}
-                />
-                <button onClick={addLink} className="bg-purple-600 hover:bg-purple-700 p-4 rounded-xl text-white transition-all active:scale-95 shadow-lg px-6">
-                    <Plus size={18} />
-                </button>
-                </div>
-                
-                <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 no-scrollbar">
-                    {settings.rotation?.links?.map(link => (
-                        <div key={link.id} className="flex justify-between items-center bg-[#030712] p-5 rounded-2xl border border-white/5 group">
-                            <div className="flex items-center gap-3 min-w-0">
-                                <LinkIcon size={14} className="text-gray-600 shrink-0" />
-                                <p className="text-[10px] text-gray-400 truncate pr-4 font-mono">{link.url}</p>
-                            </div>
-                            <button onClick={() => removeLink(link.id)} className="text-gray-700 hover:text-red-500 p-2 transition-colors">
-                                <Trash2 size={16} />
-                            </button>
-                        </div>
-                    ))}
                 </div>
             </div>
         </div>

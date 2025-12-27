@@ -69,6 +69,11 @@ export interface AdSettings {
   monetagInterstitialId?: string;
   adsterraLink: string;
   rotation?: AdRotationConfig;
+  bannerAd?: {
+    isEnabled: boolean;
+    scriptHtml: string;
+    height: number;
+  };
 }
 
 export interface SystemSettings {
