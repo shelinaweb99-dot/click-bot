@@ -31,44 +31,8 @@ export interface WithdrawalMethod {
   isEnabled: boolean;
 }
 
-export enum AdProvider {
-  MONETAG = 'MONETAG',
-  ADSTERRA = 'ADSTERRA',
-  ROTATION = 'ROTATION'
-}
-
-export type RotationMode = 'SERIAL' | 'RANDOM';
-
-export interface AdLink {
-  id: string;
-  url: string;
-  provider: 'ADSTERRA' | 'MONETAG';
-  isEnabled: boolean;
-  clicks?: number;
-}
-
-export interface AdRotationConfig {
-  isEnabled: boolean;
-  mode: RotationMode;
-  intervalMinutes: number;
-  lastRotationTime: number;
-  currentLinkIndex: number;
-  links: AdLink[];
-}
-
-export type MonetagAdType = 'REWARDED_INTERSTITIAL' | 'REWARDED_POPUP' | 'INTERSTITIAL' | 'DIRECT';
-
 export interface AdSettings {
   isGlobalEnabled?: boolean;
-  activeProvider: AdProvider;
-  monetagDirectLink: string;
-  monetagAdTag?: string;
-  monetagZoneId?: string;
-  monetagRewardedInterstitialId?: string;
-  monetagRewardedPopupId?: string;
-  monetagInterstitialId?: string;
-  adsterraLink: string;
-  rotation?: AdRotationConfig;
   bannerAd?: {
     isEnabled: boolean;
     scriptHtml: string;
@@ -178,8 +142,8 @@ export interface Task {
   totalLimit: number;
   completedCount: number;
   status: TaskStatus;
-  fileUrl?: string; // New: Protected file download link
-  fileTitle?: string; // New: Display name for the file
+  fileUrl?: string;
+  fileTitle?: string;
 }
 
 export interface WithdrawalRequest {

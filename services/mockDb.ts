@@ -164,7 +164,11 @@ export const saveSystemSettings = async (s: SystemSettings) => {
 }
 
 export const getAdSettings = async (): Promise<AdSettings> => apiCall('getSettings', { key: 'ads' });
-export const saveAdSettings = async (s: AdSettings) => apiCall('saveSettings', { key: 'ads', payload: s }, true);
+export const saveAdSettings = async (s: AdSettings) => {
+    const res = await apiCall('saveSettings', { key: 'ads', payload: s }, true);
+    window.dispatchEvent(new Event('db_change'));
+    return res;
+}
 
 export const saveTask = async (task: Task) => {
     const res = await apiCall('saveTask', { payload: task }, true);
@@ -209,22 +213,6 @@ export const recordAdReward = async (u: string) => {
     return res;
 }
 
-export const getRotatedLink = async (): Promise<string | null> => {
-    const settings = await getAdSettings();
-    if (settings?.rotation?.isEnabled && settings.rotation.links.length > 0) {
-        const activeLinks = settings.rotation.links.filter(l => l.isEnabled);
-        if (activeLinks.length === 0) return null;
-        const index = settings.rotation.currentLinkIndex % activeLinks.length;
-        return activeLinks[index].url;
-    }
-    return settings?.monetagDirectLink || settings?.adsterraLink || null;
-};
-
-// --- FIX: ADDED MISSING EXPORTS ---
-
-/** 
- * Mock implementation of getting public IP 
- */
 export const getPublicIp = async () => {
     try {
         const res = await fetch('https://api.ipify.org?format=json');
@@ -235,24 +223,15 @@ export const getPublicIp = async () => {
     }
 };
 
-/** 
- * Mock implementation of getting device fingerprint 
- */
 export const getFingerprint = () => {
     return 'dev_' + Math.random().toString(36).substr(2, 9);
 };
 
-/** 
- * Honeypot trigger for security monitoring 
- */
 export const triggerHoneypot = () => {
     console.warn("Security Event: Administrative Honeypot Triggered.");
     apiCall('logSecurityEvent', { type: 'HONEYPOT_ACCESS' });
 };
 
-/** 
- * Save a single payment method by updating the global list 
- */
 export const savePaymentMethod = async (method: WithdrawalMethod) => {
     const methods = await getPaymentMethods();
     const index = methods.findIndex(m => m.id === method.id);
@@ -264,33 +243,21 @@ export const savePaymentMethod = async (method: WithdrawalMethod) => {
     return updateAllPaymentMethods(methods);
 };
 
-/** 
- * Delete a payment method from the global list 
- */
 export const deletePaymentMethod = async (id: string) => {
     const methods = await getPaymentMethods();
     const filtered = methods.filter(m => m.id !== id);
     return updateAllPaymentMethods(filtered);
 };
 
-/** 
- * Process a referral code for a user 
- */
 export const processReferral = async (userId: string, code: string) => {
     return apiCall('processReferral', { code }, true);
 };
 
-/** 
- * Retrieve all announcements 
- */
 export const getAnnouncements = async (): Promise<Announcement[]> => {
     const data = await apiCall('getSettings', { key: 'announcements' });
     return Array.isArray(data) ? data : (data?.list || []);
 };
 
-/** 
- * Add a new announcement 
- */
 export const addAnnouncement = async (announcement: Announcement) => {
     const list = await getAnnouncements();
     list.unshift(announcement);
@@ -299,9 +266,6 @@ export const addAnnouncement = async (announcement: Announcement) => {
     return res;
 };
 
-/** 
- * Delete an announcement 
- */
 export const deleteAnnouncement = async (id: string) => {
     const list = await getAnnouncements();
     const filtered = list.filter(a => a.id !== id);
@@ -310,25 +274,16 @@ export const deleteAnnouncement = async (id: string) => {
     return res;
 };
 
-/** 
- * Retrieve game configuration settings 
- */
 export const getGameSettings = async (): Promise<GameSettings> => {
     return apiCall('getSettings', { key: 'games' });
 };
 
-/** 
- * Save game configuration settings 
- */
 export const saveGameSettings = async (settings: GameSettings) => {
     const res = await apiCall('saveSettings', { key: 'games', payload: settings }, true);
     window.dispatchEvent(new Event('db_change'));
     return res;
 };
 
-/** 
- * Execute a mini-game play 
- */
 export const playMiniGame = async (userId: string, gameType: string) => {
     const res = await apiCall('playGame', { gameType }, true);
     delete _cache[`getUser_{}`];
@@ -336,50 +291,32 @@ export const playMiniGame = async (userId: string, gameType: string) => {
     return res;
 };
 
-/** 
- * Retrieve shorts feature settings 
- */
 export const getShortsSettings = async (): Promise<ShortsSettings> => {
     return apiCall('getSettings', { key: 'shorts' });
 };
 
-/** 
- * Save shorts feature settings 
- */
 export const saveShortsSettings = async (settings: ShortsSettings) => {
     const res = await apiCall('saveSettings', { key: 'shorts', payload: settings }, true);
     window.dispatchEvent(new Event('db_change'));
     return res;
 };
 
-/** 
- * Add a new video to the shorts list 
- */
 export const addShort = async (url: string) => {
     const res = await apiCall('addShort', { url }, true);
     window.dispatchEvent(new Event('db_change'));
     return res;
 };
 
-/** 
- * Delete a video from the shorts list 
- */
 export const deleteShort = async (id: string) => {
     const res = await apiCall('deleteShort', { id }, true);
     window.dispatchEvent(new Event('db_change'));
     return res;
 };
 
-/** 
- * Retrieve all short videos 
- */
 export const getShorts = async (): Promise<ShortVideo[]> => {
     return apiCall('getShorts', {}, false);
 };
 
-/** 
- * Record a short video view and award points 
- */
 export const recordShortView = async (userId: string, videoId: string) => {
     const res = await apiCall('recordShortView', { videoId }, true);
     delete _cache[`getUser_{}`];

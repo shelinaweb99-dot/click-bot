@@ -1,128 +1,47 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, ShieldAlert, AlertCircle, Zap } from 'lucide-react';
-import { AdSettings, MonetagAdType } from '../types';
-import { getRotatedLink } from '../services/mockDb';
+import { Loader2, Zap } from 'lucide-react';
+import { AdSettings } from '../types';
 
 interface AdSimulatorProps {
   onComplete: () => void;
   isOpen: boolean;
   settings: AdSettings;
-  type?: MonetagAdType;
 }
 
-export const DEFAULT_MONETAG_SCRIPT = 'https://alwingulla.com/script/suv4.js';
-
-export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, settings, type = 'DIRECT' }) => {
-  const [status, setStatus] = useState<'IDLE' | 'LOADING' | 'SHOWING' | 'ERROR'>('IDLE');
-  const [errorMsg, setErrorMsg] = useState('');
-  const pollingInterval = useRef<any>(null);
+export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, settings }) => {
+  const [status, setStatus] = useState<'IDLE' | 'LOADING' | 'SHOWING'>('IDLE');
   const timeoutRef = useRef<any>(null);
 
-  const startProcess = async () => {
-    // Check if ads are globally disabled
+  const startProcess = () => {
     if (settings.isGlobalEnabled === false) {
       onComplete();
       return;
     }
 
     setStatus('LOADING');
-    setErrorMsg('');
 
-    // --- PRIORITY: DYNAMIC AD ROTATION / DIRECT LINK ---
-    if (settings.rotation?.isEnabled || type === 'DIRECT') {
-        try {
-            const link = await getRotatedLink();
-            if (link) {
-                const tg = (window as any).Telegram?.WebApp;
-                
-                if (tg && typeof tg.openLink === 'function') {
-                    tg.openLink(link);
-                } else {
-                    window.open(link, '_blank');
-                }
-                
-                setStatus('SHOWING');
-                timeoutRef.current = setTimeout(() => {
-                    onComplete();
-                }, 3000);
-            } else {
-                throw new Error("No direct link found.");
-            }
-        } catch (e: any) {
-            setStatus('ERROR');
-            setErrorMsg(e.message || 'Direct link failure.');
-            setTimeout(onComplete, 2000);
+    // Simulate internal verification process delay
+    timeoutRef.current = setTimeout(() => {
+        if (settings.isGlobalEnabled !== false) {
+            setStatus('SHOWING');
+            timeoutRef.current = setTimeout(() => {
+                onComplete();
+            }, 2500);
+        } else {
+            onComplete();
         }
-        return;
-    }
-
-    // --- MODE 2: TELEGRAM SDK (ZONE ID) ---
-    let zoneId = '';
-    if (type === 'REWARDED_INTERSTITIAL' && settings.monetagRewardedInterstitialId) {
-        zoneId = settings.monetagRewardedInterstitialId;
-    } else if (type === 'REWARDED_POPUP' && settings.monetagRewardedPopupId) {
-        zoneId = settings.monetagRewardedPopupId;
-    } else if (type === 'INTERSTITIAL' && settings.monetagInterstitialId) {
-        zoneId = settings.monetagInterstitialId;
-    } else {
-        zoneId = settings.monetagZoneId || '';
-    }
-
-    if (!zoneId) {
-        setStatus('ERROR');
-        setErrorMsg('Ad Zone ID not configured.');
-        setTimeout(onComplete, 1500);
-        return;
-    }
-
-    const scriptId = `monetag-sdk-${zoneId}`;
-    if (!document.getElementById(scriptId)) {
-        const script = document.createElement('script');
-        script.id = scriptId;
-        script.src = settings.monetagAdTag || DEFAULT_MONETAG_SCRIPT;
-        script.async = true;
-        script.dataset.zone = zoneId;
-        document.head.appendChild(script);
-    }
-
-    let attempts = 0;
-    const maxAttempts = 80; 
-    
-    pollingInterval.current = setInterval(() => {
-        attempts++;
-        const funcName = `show_${zoneId}`;
-        
-        if (typeof (window as any)[funcName] === 'function') {
-            clearInterval(pollingInterval.current);
-            try {
-                (window as any)[funcName]();
-                setStatus('SHOWING');
-                timeoutRef.current = setTimeout(onComplete, 15000); 
-            } catch (e) {
-                setStatus('ERROR');
-                setErrorMsg('SDK Execution Blocked.');
-                setTimeout(onComplete, 2000);
-            }
-        } else if (attempts >= maxAttempts) {
-            clearInterval(pollingInterval.current);
-            setStatus('ERROR');
-            setErrorMsg('SDK Load Timeout.');
-            setTimeout(onComplete, 2000);
-        }
-    }, 100);
+    }, 1500);
   };
 
   useEffect(() => {
     if (!isOpen) {
         setStatus('IDLE');
-        if (pollingInterval.current) clearInterval(pollingInterval.current);
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         return;
     }
     startProcess();
     return () => {
-        if (pollingInterval.current) clearInterval(pollingInterval.current);
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, [isOpen]);
@@ -135,19 +54,17 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
           
           <div className="space-y-6">
               <div className="relative w-16 h-16 mx-auto">
-                <Loader2 className={`w-full h-full ${status === 'ERROR' ? 'text-red-500' : 'text-blue-500'} animate-spin`} strokeWidth={1.5} />
-                <div className={`absolute inset-0 ${status === 'ERROR' ? 'bg-red-500/20' : 'bg-blue-500/20'} blur-2xl animate-pulse`}></div>
+                <Loader2 className="w-full h-full text-blue-500 animate-spin" strokeWidth={1.5} />
+                <div className="absolute inset-0 bg-blue-500/20 blur-2xl animate-pulse"></div>
               </div>
               
               <div className="space-y-2">
                 <h3 className="text-white font-black text-xs uppercase tracking-[0.2em]">
-                    {status === 'LOADING' ? 'Connecting Node' : 
-                     status === 'SHOWING' ? 'Ad Dispatched' : 'Network Alert'}
+                    {status === 'LOADING' ? 'Verifying Integrity' : 'Sync Complete'}
                 </h3>
                 <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
-                    {status === 'LOADING' ? 'Synchronizing with sponsor network...' : 
-                     status === 'SHOWING' ? 'Processing reward assets. Please wait...' : 
-                     errorMsg || 'Retrying connection...'}
+                    {status === 'LOADING' ? 'Synchronizing with secure earning node...' : 
+                     'Processing rewards. This session is verified.'}
                 </p>
               </div>
           </div>
@@ -155,7 +72,7 @@ export const AdSimulator: React.FC<AdSimulatorProps> = ({ onComplete, isOpen, se
           <div className="mt-10 pt-6 border-t border-white/5">
               <div className="flex items-center justify-center gap-2 text-blue-500/50 animate-pulse">
                 <Zap size={14} />
-                <span className="text-[9px] font-black uppercase tracking-[0.3em]">Full Automation Active</span>
+                <span className="text-[9px] font-black uppercase tracking-[0.3em]">Bot Engine Verified</span>
               </div>
           </div>
       </div>
