@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Task, TaskType, AdSettings } from '../../types';
 import { getTasks, verifyAndCompleteTask, getCurrentUserId, getAdSettings, getTransactions, getProtectedFile } from '../../services/mockDb';
-import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, Timer, ShieldAlert, X, Info, Lock, Download, ExternalLink, Zap, FileText, Minimize2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, Timer, ShieldAlert, X, Info, Lock, Download, ExternalLink, Zap, FileText, Minimize2, ExternalLink as OpenIcon } from 'lucide-react';
 import { AdSimulator } from '../../components/AdSimulator';
 import { NativeBannerModal } from '../../components/NativeBannerModal';
 
@@ -89,7 +89,6 @@ export const TaskRunner: React.FC = () => {
             ? `${task.url}${task.url.includes('?') ? '&' : '?'}uid=${getCurrentUserId()}` 
             : task.url;
             
-        // For Website tasks, try to show in an internal viewer first
         if (task.type === TaskType.WEBSITE) {
             setShowViewer(true);
             setIsTimerRunning(true);
@@ -238,7 +237,9 @@ export const TaskRunner: React.FC = () => {
                                 <span className="text-[9px] font-black uppercase tracking-[0.3em]">Monitoring Activity...</span>
                             </div>
                             {task.type === TaskType.WEBSITE && (
-                                <button onClick={() => setShowViewer(true)} className="text-blue-400 text-[10px] font-black uppercase underline">Re-open Viewer</button>
+                                <button onClick={() => setShowViewer(true)} className="bg-blue-600/10 text-blue-400 px-6 py-2 rounded-xl text-[10px] font-black uppercase border border-blue-500/20 active:scale-95 transition-all">
+                                    Re-open Viewer
+                                </button>
                             )}
                         </div>
                     ) : (
@@ -254,34 +255,56 @@ export const TaskRunner: React.FC = () => {
           </div>
       </div>
 
-      {/* Internal Web Viewer for Website Tasks */}
+      {/* Internal Full-Screen Viewer for Website Tasks */}
       {showViewer && task.type === TaskType.WEBSITE && (
-          <div className="fixed inset-0 z-[100] bg-black flex flex-col">
-              <div className="bg-[#1e293b] p-4 flex justify-between items-center border-b border-white/5">
-                   <div className="flex items-center gap-2 text-white">
-                       <Globe size={16} className="text-blue-400" />
-                       <span className="text-[10px] font-black uppercase tracking-widest truncate max-w-[200px]">{task.title}</span>
+          <div className="fixed inset-0 z-[1000] bg-black flex flex-col animate-in slide-in-from-bottom duration-300">
+              {/* Internal Browser HUD */}
+              <div className="bg-[#1e293b] p-4 flex justify-between items-center border-b border-white/5 shadow-2xl relative z-20">
+                   <div className="flex flex-col min-w-0 pr-4">
+                       <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest">Internal Session</span>
+                       <span className="text-white font-bold text-[11px] truncate">{task.title}</span>
                    </div>
-                   <div className="flex items-center gap-4">
-                       <div className="bg-black/40 px-3 py-1.5 rounded-lg border border-white/5 text-blue-400 font-mono text-sm">
-                           {timeLeft}s
+                   <div className="flex items-center gap-3">
+                       <div className="bg-black/60 px-4 py-2 rounded-2xl border border-white/10 flex items-center gap-2">
+                           <Timer size={14} className="text-blue-500 animate-pulse" />
+                           <span className="text-blue-400 font-mono text-lg font-black">{timeLeft}s</span>
                        </div>
-                       <button onClick={() => setShowViewer(false)} className="p-2 bg-white/5 rounded-lg text-gray-400">
+                       <button 
+                        onClick={() => setShowViewer(false)} 
+                        className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl text-gray-400 transition-all"
+                        title="Minimize"
+                       >
                            <Minimize2 size={20} />
                        </button>
                    </div>
               </div>
-              <div className="flex-1 bg-white relative">
+              
+              {/* The Iframe Browser Surface */}
+              <div className="flex-1 bg-white relative overflow-hidden">
                   <iframe 
                     src={task.url} 
                     className="w-full h-full border-none" 
-                    title="Task Viewer"
+                    title="Bot Engine Browser"
                     sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                    loading="lazy"
                   />
-                  {/* Overlay to catch clicks if needed, but we want the user to interact */}
+                  {/* Fallback helper if site doesn't load in iframe */}
+                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 w-full px-10">
+                    <div className="bg-black/80 backdrop-blur-md p-4 rounded-2xl border border-white/10 flex items-center justify-between gap-4">
+                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest leading-none">Can't see content?</p>
+                        <button 
+                            onClick={() => window.open(task.url, '_blank')}
+                            className="text-blue-500 font-black text-[9px] uppercase tracking-widest flex items-center gap-2 hover:underline"
+                        >
+                            Open Externally <OpenIcon size={12} />
+                        </button>
+                    </div>
+                  </div>
               </div>
-              <div className="p-4 bg-[#0b1120] text-center">
-                  <p className="text-[8px] text-gray-500 font-black uppercase tracking-widest">Keep this window open to complete verification</p>
+              
+              {/* Footer Indicator */}
+              <div className="p-3 bg-black/40 text-center border-t border-white/5">
+                  <p className="text-[7px] text-gray-600 font-black uppercase tracking-[0.4em]">DO NOT CLOSE &bull; BOT VERIFICATION IN PROGRESS</p>
               </div>
           </div>
       )}
