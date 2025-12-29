@@ -14,6 +14,7 @@ export const TaskRunner: React.FC = () => {
   const [timeLeft, setTimeLeft] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [hasOpenedLink, setHasOpenedLink] = useState(false);
+  const [isVerifyingFake, setIsVerifyingFake] = useState(false);
   const [showAd, setShowAd] = useState(false);
   const [showNativeBanner, setShowNativeBanner] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -93,10 +94,16 @@ export const TaskRunner: React.FC = () => {
     if (task?.url) {
         const tg = (window as any).Telegram?.WebApp;
         
-        // Pass both uid and tid for maximum shortlink provider compatibility
+        // Ensure Telegram URLs are valid
+        let targetUrl = task.url;
+        if ((task.type === TaskType.TELEGRAM || task.type === TaskType.TELEGRAM_CHANNEL || task.type === TaskType.TELEGRAM_BOT) && !targetUrl.startsWith('http')) {
+            const handle = targetUrl.startsWith('@') ? targetUrl.slice(1) : targetUrl;
+            targetUrl = `https://t.me/${handle}`;
+        }
+
         const linkWithParams = task.type === TaskType.SHORTLINK 
-            ? `${task.url}${task.url.includes('?') ? '&' : '?'}uid=${getCurrentUserId()}&tid=${task.id}` 
-            : task.url;
+            ? `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}uid=${getCurrentUserId()}&tid=${task.id}` 
+            : targetUrl;
             
         if (task.type === TaskType.WEBSITE) {
             setShowViewer(true);
@@ -108,7 +115,6 @@ export const TaskRunner: React.FC = () => {
                 window.open(linkWithParams, '_blank');
             }
             setHasOpenedLink(true);
-            // No timer for Telegram join tasks, we rely on verify button
         } else {
             if (tg && typeof tg.openLink === 'function') {
                 tg.openLink(linkWithParams);
@@ -126,7 +132,17 @@ export const TaskRunner: React.FC = () => {
   };
 
   const handleVerify = () => {
-      setShowAd(true);
+      if (isTelegramTask) {
+          setIsVerifyingFake(true);
+          setTimeout(() => {
+              if (isMounted.current) {
+                  setIsVerifyingFake(false);
+                  setShowAd(true);
+              }
+          }, 2000);
+      } else {
+          setShowAd(true);
+      }
   };
 
   const handleAdComplete = () => {
@@ -182,6 +198,7 @@ export const TaskRunner: React.FC = () => {
           </div>
           {task.type !== TaskType.SHORTLINK && !isCompleted && !isTelegramTask && (
               <div className={`flex items-center gap-2.5 font-mono text-2xl font-black tabular-nums ${timeLeft === 0 ? 'text-green-500' : 'text-blue-500'}`}>
+                  <span className="text-xs uppercase font-black mr-2 opacity-50">Timer</span>
                   <Timer size={20} className={isTimerRunning ? 'animate-pulse' : ''} />
                   {timeLeft}s
               </div>
@@ -217,7 +234,7 @@ export const TaskRunner: React.FC = () => {
                      task.type === TaskType.SHORTLINK 
                         ? 'Follow the link and solve the security challenge to unlock.' 
                         : isTelegramTask 
-                        ? `Click the button below to join ${task.channelUsername || 'the target'} and then verify.`
+                        ? `Click the button below to join the target Telegram resource and then verify.`
                         : `Complete the ${task.durationSeconds}s requirement to verify.`}
                 </p>
               </div>
@@ -249,26 +266,31 @@ export const TaskRunner: React.FC = () => {
                         <div className="space-y-4">
                             <button 
                                 onClick={handleStartTask} 
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.8rem] shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+                                disabled={isVerifyingFake}
+                                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.8rem] shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
                             >
                                 {task.type === TaskType.SHORTLINK ? <ExternalLink size={18}/> : 
                                  isTelegramTask ? <Send size={18} /> : <PlayCircle size={18} />} 
-                                {isTelegramTask ? 'JOIN TELEGRAM' : 'DEPLOY MISSION'}
+                                {isTelegramTask ? 'OPEN TELEGRAM' : 'DEPLOY MISSION'}
                             </button>
                             
                             {(isTelegramTask && hasOpenedLink) && (
                                 <button 
                                     onClick={handleVerify} 
-                                    className="w-full bg-green-600 hover:bg-green-700 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.8rem] shadow-xl transition-all active:scale-95 animate-in zoom-in"
+                                    disabled={isVerifyingFake}
+                                    className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-800 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.8rem] shadow-xl transition-all active:scale-95 animate-in zoom-in flex items-center justify-center gap-2"
                                 >
-                                    VERIFY JOIN
+                                    {isVerifyingFake ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
+                                    {isVerifyingFake ? 'CHECKING...' : 'VERIFY JOIN'}
                                 </button>
                             )}
                             
                             {task.type === TaskType.SHORTLINK && hasOpenedLink && (
-                                <p className="text-amber-500 text-[8px] font-black uppercase tracking-[0.2em] animate-pulse">
-                                    Waiting for postback from provider...
-                                </p>
+                                <div className="p-4 bg-amber-500/5 rounded-2xl border border-amber-500/10">
+                                    <p className="text-amber-500 text-[8px] font-black uppercase tracking-[0.2em] animate-pulse">
+                                        Waiting for network postback... points will be added automatically once provider confirms.
+                                    </p>
+                                </div>
                             )}
                         </div>
                     ) : timeLeft > 0 ? (

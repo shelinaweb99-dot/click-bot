@@ -75,13 +75,21 @@ export const AdminTasks: React.FC = () => {
             if (videoId) finalUrl = `https://www.youtube.com/embed/${videoId}`;
         }
 
+        // Auto-format Telegram links
+        if ((type === TaskType.TELEGRAM || type === TaskType.TELEGRAM_CHANNEL || type === TaskType.TELEGRAM_BOT) && finalUrl) {
+            if (!finalUrl.startsWith('http')) {
+                const handle = finalUrl.startsWith('@') ? finalUrl.slice(1) : finalUrl;
+                finalUrl = `https://t.me/${handle}`;
+            }
+        }
+
         const newTask: Task = {
             id: currentId || 't_' + Date.now(),
             title,
             type,
             reward,
             url: finalUrl,
-            channelUsername: (type === TaskType.TELEGRAM || type === TaskType.TELEGRAM_CHANNEL || type === TaskType.TELEGRAM_BOT) ? channelUsername : undefined,
+            channelUsername: (type === TaskType.TELEGRAM || type === TaskType.TELEGRAM_CHANNEL || type === TaskType.TELEGRAM_BOT) ? (channelUsername || finalUrl.split('/').pop() || '') : undefined,
             durationSeconds: duration,
             totalLimit: limit,
             completedCount: existingTask ? existingTask.completedCount : 0, 
@@ -160,13 +168,6 @@ export const AdminTasks: React.FC = () => {
                       <input type="number" className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1 focus:border-blue-500 outline-none" required value={reward} onChange={e => setReward(Number(e.target.value))} />
                   </div>
 
-                  {(type === TaskType.TELEGRAM_CHANNEL || type === TaskType.TELEGRAM_BOT || type === TaskType.TELEGRAM) && (
-                      <div>
-                          <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Channel Username (e.g. @mychannel)</label>
-                          <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={channelUsername} onChange={e => setChannelUsername(e.target.value)} placeholder="@mychannel" />
-                      </div>
-                  )}
-
                   {type === TaskType.SHORTLINK ? (
                       <div className="md:col-span-2 space-y-6 p-6 bg-blue-500/5 rounded-3xl border border-blue-500/10">
                           <div className="flex items-center gap-2 text-blue-400 font-black text-[10px] uppercase tracking-widest">
@@ -187,18 +188,20 @@ export const AdminTasks: React.FC = () => {
                                <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://gplinks.co/..." />
                           </div>
                           <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
-                              <label className="text-gray-500 text-[9px] font-black uppercase tracking-widest">Global Postback URL</label>
+                              <label className="text-gray-500 text-[9px] font-black uppercase tracking-widest">Global Postback URL (For Provider)</label>
                               <div className="flex items-center gap-2 mt-2">
                                   <code className="bg-[#030712] p-3 rounded-lg text-blue-400 font-mono text-[10px] flex-1 break-all">{postbackUrl}</code>
                                   <button type="button" onClick={() => navigator.clipboard.writeText(postbackUrl)} className="p-3 bg-white/5 rounded-xl hover:text-white transition-colors"><LinkIcon size={16} /></button>
                               </div>
-                              <p className="text-[9px] text-gray-600 mt-2 italic">* Provide this URL to your shortlink network.</p>
+                              <p className="text-[9px] text-gray-600 mt-2 italic">* Provide this exact URL to your shortlink network's postback settings.</p>
                           </div>
                       </div>
                   ) : (
                       <div className="md:col-span-2">
-                          <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Mission URL</label>
-                          <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1 focus:border-blue-500 outline-none" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://..." />
+                          <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">
+                              {(type === TaskType.TELEGRAM_CHANNEL || type === TaskType.TELEGRAM_BOT) ? 'Telegram Link or @Username' : 'Mission URL'}
+                          </label>
+                          <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1 focus:border-blue-500 outline-none" value={url} onChange={e => setUrl(e.target.value)} placeholder={type.startsWith('TELEGRAM') ? 'https://t.me/example or @example' : 'https://...'} />
                       </div>
                   )}
 

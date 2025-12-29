@@ -142,14 +142,15 @@ export default async function handler(req, res) {
     try {
         await connectToDatabase();
         
+        // Handle Postbacks (GET or POST)
         if (req.query.action === 'postback' || req.body.action === 'postback') {
-            const uid = req.query.uid || req.body.uid || req.query.user_id || req.body.user_id;
+            const uid = req.query.uid || req.body.uid || req.query.user_id || req.body.user_id || req.query.subid || req.body.subid;
             const tid = req.query.tid || req.body.tid || req.query.task_id || req.body.task_id;
 
-            console.log(`[POSTBACK RECEIVED] UID: ${uid}, TID: ${tid}`);
+            console.log(`[REWARD ENGINE] Postback Received. User: ${uid}, Task: ${tid}`);
 
             if (!uid || !tid) {
-                return res.status(400).json({ message: "Invalid postback parameters. Missing UID or TID." });
+                return res.status(400).json({ message: "Postback rejected: Missing User ID or Task ID." });
             }
 
             const [user, task] = await Promise.all([
@@ -158,26 +159,28 @@ export default async function handler(req, res) {
             ]);
 
             if (!user || !task) {
-                console.warn(`[POSTBACK ERROR] Target not found. User: ${!!user}, Task: ${!!task}`);
+                console.warn(`[REWARD ENGINE] Target not found. UserExists: ${!!user}, TaskExists: ${!!task}`);
                 return res.status(404).json({ message: "Verification target not found." });
             }
             
+            // Allow multiple completions for postbacks ONLY if we want it, but usually one is standard
             const existingTx = await Transaction.findOne({ userId: uid, taskId: tid });
             if (existingTx) {
-                return res.status(200).send("1"); // Some providers expect '1' or 'success'
+                console.log(`[REWARD ENGINE] User ${uid} already rewarded for Task ${tid}. Skipping.`);
+                return res.status(200).send("1"); 
             }
 
             user.balance += task.reward;
             await user.save();
             await Transaction.create({
-                id: 'tx_p_' + Date.now() + '_' + uid,
+                id: 'tx_pb_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
                 userId: uid, taskId: tid, amount: task.reward,
-                type: 'EARNING', description: `Verified Shortlink: ${task.title}`,
+                type: 'EARNING', description: `Shortlink Verified: ${task.title}`,
                 date: new Date().toISOString()
             });
             await Task.updateOne({ id: tid }, { $inc: { completedCount: 1 } });
             
-            console.log(`[POSTBACK SUCCESS] Rewarded User ${uid} with ${task.reward} points.`);
+            console.log(`[REWARD ENGINE] SUCCESS. User ${uid} credited with ${task.reward} points.`);
             return res.status(200).send("1");
         }
 
@@ -229,7 +232,9 @@ export default async function handler(req, res) {
                 const recentTaskIds = new Set(recentTx.map(tx => tx.taskId));
                 
                 const visibleTasks = tasks.filter(t => {
-                    if ((t.type === 'WEBSITE' || t.type === 'YOUTUBE') && recentTaskIds.has(t.id)) {
+                    // Filter out completed earning tasks for 24 hours
+                    const earningTypes = ['WEBSITE', 'YOUTUBE', 'TELEGRAM', 'TELEGRAM_CHANNEL', 'TELEGRAM_BOT'];
+                    if (earningTypes.includes(t.type) && recentTaskIds.has(t.id)) {
                         return false;
                     }
                     return true;
@@ -253,7 +258,6 @@ export default async function handler(req, res) {
                 return res.json(doc?.data || {});
             }
 
-            // --- ADMIN ACTIONS ---
             case 'getAllUsers':
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Unauthorized" });
                 return res.json(await User.find({}).lean());
@@ -294,7 +298,6 @@ export default async function handler(req, res) {
                 await ShortVideo.deleteOne({ id: data.id });
                 return res.json({ success: true });
 
-            // --- USER ACTIONS ---
             case 'getShorts': return res.json(await ShortVideo.find({}).sort({ addedAt: -1 }).lean());
 
             case 'recordShortView': {
@@ -414,26 +417,30 @@ export default async function handler(req, res) {
                 const { taskId } = data;
                 const task = await Task.findOne({ id: taskId }).lean();
                 if (!task) return res.status(404).json({ message: "Task unavailable." });
-                if (task.type === 'SHORTLINK') return res.status(400).json({ message: "Requires postback." });
+                
+                // Block manual completion for shortlinks
+                if (task.type === 'SHORTLINK') return res.status(400).json({ message: "Requires automatic postback." });
 
-                // Check 24h cooldown for website/youtube
-                if (task.type === 'WEBSITE' || task.type === 'YOUTUBE') {
-                    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-                    const existing = await Transaction.findOne({
-                        userId: currentUser.id,
-                        taskId: task.id,
-                        type: 'EARNING',
-                        date: { $gte: yesterday }
-                    });
-                    if (existing) return res.status(400).json({ message: "Task is on cooldown. Try again in 24 hours." });
-                }
+                // Check 24h cooldown for all types except shortlink
+                const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                const existing = await Transaction.findOne({
+                    userId: currentUser.id,
+                    taskId: task.id,
+                    type: 'EARNING',
+                    date: { $gte: yesterday }
+                });
+                if (existing) return res.status(400).json({ message: "Task is on cooldown. Try again tomorrow." });
 
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: task.reward } });
                 await Transaction.create({
                     id: 'tx_m_' + Date.now(), userId: currentUser.id, taskId: task.id,
                     amount: task.reward, type: 'EARNING',
-                    description: `Task Completed: ${task.title}`, date: new Date().toISOString()
+                    description: `Mission Completed: ${task.title}`, date: new Date().toISOString()
                 });
+                
+                // Update task stats
+                await Task.updateOne({ id: task.id }, { $inc: { completedCount: 1 } });
+                
                 return res.json({ success: true, reward: task.reward });
             }
 
