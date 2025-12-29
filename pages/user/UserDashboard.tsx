@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { User, Transaction } from '../../types';
 import { getCurrentUserId, getUserById, getTransactions, subscribeToChanges, claimDailyReward, triggerHoneypot } from '../../services/mockDb';
-import { TrendingUp, Award, Clock, CalendarCheck, Trophy, Loader2 } from 'lucide-react';
+import { TrendingUp, Award, Clock, CalendarCheck, Trophy, Loader2, Users, Sparkles } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
 export const UserDashboard: React.FC = () => {
@@ -18,11 +18,10 @@ export const UserDashboard: React.FC = () => {
         const id = getCurrentUserId();
         if (!id) { navigate('/login'); return; }
         
-        // SWR Logic: Show cache immediately, then fetch updates
         if (!silent && !user) setLoading(true);
         
         const [u, txs] = await Promise.all([
-            getUserById(id, silent), // Pass silent as forceRefresh
+            getUserById(id, silent),
             getTransactions(id, silent)
         ]);
 
@@ -40,9 +39,9 @@ export const UserDashboard: React.FC = () => {
 
   useEffect(() => {
     isMounted.current = true;
-    fetchData(); // Attempt immediate load from cache
+    fetchData();
     const unsubscribe = subscribeToChanges(() => {
-        if (isMounted.current) fetchData(true); // Background refresh
+        if (isMounted.current) fetchData(true);
     });
     return () => {
         isMounted.current = false;
@@ -130,6 +129,27 @@ export const UserDashboard: React.FC = () => {
           >
              {isCheckedInToday() ? 'Claimed' : (isClaiming ? '...' : 'Claim')}
           </button>
+      </div>
+
+      {/* Invite Friends Card - Improved Visibility */}
+      <div className="bg-[#1e293b] p-5 rounded-[1.8rem] sm:rounded-[2.5rem] border border-white/5 shadow-xl relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity pointer-events-none">
+              <Users size={120} />
+          </div>
+          <div className="flex items-center justify-between relative z-10">
+              <div className="flex items-center gap-4">
+                  <div className="bg-pink-600/10 p-3.5 rounded-2xl text-pink-500 border border-pink-500/10 animate-pulse">
+                      <Sparkles size={24} />
+                  </div>
+                  <div>
+                      <h3 className="text-white font-black text-[12px] sm:text-sm uppercase tracking-tight">Invite Protocol</h3>
+                      <p className="text-gray-500 text-[9px] font-black uppercase tracking-widest mt-1">Yield 25 Pts per Friend</p>
+                  </div>
+              </div>
+              <Link to="/friends" className="bg-pink-600/10 hover:bg-pink-600 text-pink-500 hover:text-white px-5 py-3 rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] transition-all border border-pink-500/20 active:scale-95">
+                  Connect
+              </Link>
+          </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:gap-5">

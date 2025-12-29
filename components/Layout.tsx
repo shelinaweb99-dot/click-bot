@@ -71,26 +71,30 @@ export const UserLayout: React.FC<{ children: React.ReactNode }> = ({ children }
 
       {/* Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 bg-[#1e293b]/95 backdrop-blur-md border-t border-white/5 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] z-50 h-[4.5rem] sm:h-20 pb-[env(safe-area-inset-bottom)]">
-        <div className="flex justify-around items-center h-full max-w-2xl mx-auto px-2">
+        <div className="flex justify-around items-center h-full max-w-2xl mx-auto px-1">
           <NavLink to="/dashboard" className={({ isActive }) => `flex flex-col items-center gap-1 transition-all flex-1 ${isActive ? 'text-blue-400 scale-105' : 'text-gray-500'}`}>
-            <Home size={22} className="sm:w-6 sm:h-6" />
-            <span className="text-[8px] sm:text-[10px] font-bold uppercase tracking-tighter">Home</span>
+            <Home size={20} className="sm:w-6 sm:h-6" />
+            <span className="text-[7px] sm:text-[9px] font-bold uppercase tracking-tighter">Home</span>
           </NavLink>
           <NavLink to="/shorts" className={({ isActive }) => `flex flex-col items-center gap-1 transition-all flex-1 ${isActive ? 'text-blue-400 scale-105' : 'text-gray-500'}`}>
-            <PlaySquare size={22} className="sm:w-6 sm:h-6" />
-            <span className="text-[8px] sm:text-[10px] font-bold uppercase tracking-tighter">Shorts</span>
+            <PlaySquare size={20} className="sm:w-6 sm:h-6" />
+            <span className="text-[7px] sm:text-[9px] font-bold uppercase tracking-tighter">Shorts</span>
           </NavLink>
           <NavLink to="/tasks" className={({ isActive }) => `flex flex-col items-center gap-1 transition-all flex-1 ${isActive ? 'text-blue-400 scale-105' : 'text-gray-500'}`}>
-            <CheckSquare size={22} className="sm:w-6 sm:h-6" />
-            <span className="text-[8px] sm:text-[10px] font-bold uppercase tracking-tighter">Tasks</span>
+            <CheckSquare size={20} className="sm:w-6 sm:h-6" />
+            <span className="text-[7px] sm:text-[9px] font-bold uppercase tracking-tighter">Tasks</span>
+          </NavLink>
+          <NavLink to="/friends" className={({ isActive }) => `flex flex-col items-center gap-1 transition-all flex-1 ${isActive ? 'text-blue-400 scale-105' : 'text-gray-500'}`}>
+            <Users size={20} className="sm:w-6 sm:h-6" />
+            <span className="text-[7px] sm:text-[9px] font-bold uppercase tracking-tighter">Friends</span>
           </NavLink>
            <NavLink to="/games" className={({ isActive }) => `flex flex-col items-center gap-1 transition-all flex-1 ${isActive ? 'text-blue-400 scale-105' : 'text-gray-500'}`}>
-            <Gamepad2 size={22} className="sm:w-6 sm:h-6" />
-            <span className="text-[8px] sm:text-[10px] font-bold uppercase tracking-tighter">Games</span>
+            <Gamepad2 size={20} className="sm:w-6 sm:h-6" />
+            <span className="text-[7px] sm:text-[9px] font-bold uppercase tracking-tighter">Games</span>
           </NavLink>
           <NavLink to="/wallet" className={({ isActive }) => `flex flex-col items-center gap-1 transition-all flex-1 ${isActive ? 'text-blue-400 scale-105' : 'text-gray-500'}`}>
-            <Wallet size={22} className="sm:w-6 sm:h-6" />
-            <span className="text-[8px] sm:text-[10px] font-bold uppercase tracking-tighter">Wallet</span>
+            <Wallet size={20} className="sm:w-6 sm:h-6" />
+            <span className="text-[7px] sm:text-[9px] font-bold uppercase tracking-tighter">Wallet</span>
           </NavLink>
         </div>
       </nav>
