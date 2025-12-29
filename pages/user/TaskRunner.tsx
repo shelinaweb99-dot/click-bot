@@ -269,13 +269,6 @@ export const TaskRunner: React.FC = () => {
                            <Timer size={14} className="text-blue-500 animate-pulse" />
                            <span className="text-blue-400 font-mono text-lg font-black">{timeLeft}s</span>
                        </div>
-                       <button 
-                        onClick={() => setShowViewer(false)} 
-                        className="p-3 bg-white/5 hover:bg-white/10 rounded-2xl text-gray-400 transition-all"
-                        title="Minimize"
-                       >
-                           <Minimize2 size={20} />
-                       </button>
                    </div>
               </div>
               
@@ -288,18 +281,6 @@ export const TaskRunner: React.FC = () => {
                     sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                     loading="lazy"
                   />
-                  {/* Fallback helper if site doesn't load in iframe */}
-                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 w-full px-10">
-                    <div className="bg-black/80 backdrop-blur-md p-4 rounded-2xl border border-white/10 flex items-center justify-between gap-4">
-                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest leading-none">Can't see content?</p>
-                        <button 
-                            onClick={() => window.open(task.url, '_blank')}
-                            className="text-blue-500 font-black text-[9px] uppercase tracking-widest flex items-center gap-2 hover:underline"
-                        >
-                            Open Externally <OpenIcon size={12} />
-                        </button>
-                    </div>
-                  </div>
               </div>
               
               {/* Footer Indicator */}
