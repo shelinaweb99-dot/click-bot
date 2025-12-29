@@ -142,17 +142,30 @@ export default async function handler(req, res) {
     try {
         await connectToDatabase();
         
-        if (req.query.action === 'postback') {
-            const uid = req.query.uid || req.body.uid;
-            const tid = req.query.tid || req.body.tid;
+        if (req.query.action === 'postback' || req.body.action === 'postback') {
+            const uid = req.query.uid || req.body.uid || req.query.user_id || req.body.user_id;
+            const tid = req.query.tid || req.body.tid || req.query.task_id || req.body.task_id;
 
-            if (!uid || !tid) return res.status(400).json({ message: "Invalid postback parameters." });
-            const [user, task] = await Promise.all([User.findOne({ id: uid }), Task.findOne({ id: tid })]);
-            if (!user || !task) return res.status(404).json({ message: "Verification target not found." });
+            console.log(`[POSTBACK RECEIVED] UID: ${uid}, TID: ${tid}`);
+
+            if (!uid || !tid) {
+                return res.status(400).json({ message: "Invalid postback parameters. Missing UID or TID." });
+            }
+
+            const [user, task] = await Promise.all([
+                User.findOne({ id: uid }), 
+                Task.findOne({ id: tid })
+            ]);
+
+            if (!user || !task) {
+                console.warn(`[POSTBACK ERROR] Target not found. User: ${!!user}, Task: ${!!task}`);
+                return res.status(404).json({ message: "Verification target not found." });
+            }
             
-            // Check for any previous completion for postbacks
             const existingTx = await Transaction.findOne({ userId: uid, taskId: tid });
-            if (existingTx) return res.json({ success: true, message: "Already credited." });
+            if (existingTx) {
+                return res.status(200).send("1"); // Some providers expect '1' or 'success'
+            }
 
             user.balance += task.reward;
             await user.save();
@@ -163,7 +176,9 @@ export default async function handler(req, res) {
                 date: new Date().toISOString()
             });
             await Task.updateOne({ id: tid }, { $inc: { completedCount: 1 } });
-            return res.json({ success: true, message: "Points awarded." });
+            
+            console.log(`[POSTBACK SUCCESS] Rewarded User ${uid} with ${task.reward} points.`);
+            return res.status(200).send("1");
         }
 
         const { action, ...data } = req.body || {};
@@ -213,7 +228,6 @@ export default async function handler(req, res) {
 
                 const recentTaskIds = new Set(recentTx.map(tx => tx.taskId));
                 
-                // Filter: Website and YouTube tasks vanish for 24h after completion
                 const visibleTasks = tasks.filter(t => {
                     if ((t.type === 'WEBSITE' || t.type === 'YOUTUBE') && recentTaskIds.has(t.id)) {
                         return false;
@@ -325,7 +339,6 @@ export default async function handler(req, res) {
                 
                 if (!config.isEnabled) return res.status(400).json({ message: "Game is disabled." });
 
-                // Check/Reset Stats
                 let stats = currentUser.gameStats || { lastPlayedDate: today, spinCount: 0, scratchCount: 0, guessCount: 0, lotteryCount: 0 };
                 if (stats.lastPlayedDate !== today) {
                     stats = { lastPlayedDate: today, spinCount: 0, scratchCount: 0, guessCount: 0, lotteryCount: 0 };

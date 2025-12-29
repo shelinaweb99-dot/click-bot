@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Task, TaskType, AdSettings } from '../../types';
 import { getTasks, verifyAndCompleteTask, getCurrentUserId, getAdSettings, getTransactions, getProtectedFile } from '../../services/mockDb';
-import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, Timer, ShieldAlert, X, Info, Lock, Download, ExternalLink, Zap, FileText, Minimize2, ExternalLink as OpenIcon } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, Timer, ShieldAlert, X, Info, Lock, Download, ExternalLink, Zap, FileText, Minimize2, ExternalLink as OpenIcon, Bot } from 'lucide-react';
 import { AdSimulator } from '../../components/AdSimulator';
 import { NativeBannerModal } from '../../components/NativeBannerModal';
 
@@ -13,6 +13,7 @@ export const TaskRunner: React.FC = () => {
   const [task, setTask] = useState<Task | null>(null);
   const [timeLeft, setTimeLeft] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [hasOpenedLink, setHasOpenedLink] = useState(false);
   const [showAd, setShowAd] = useState(false);
   const [showNativeBanner, setShowNativeBanner] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -31,7 +32,6 @@ export const TaskRunner: React.FC = () => {
       
       const done = txs.some(tx => {
           if (tx.taskId !== taskId || tx.type !== 'EARNING') return false;
-          // For recurring tasks, check if done in last 24h
           const txDate = new Date(tx.date).getTime();
           return txDate > yesterday;
       });
@@ -92,22 +92,34 @@ export const TaskRunner: React.FC = () => {
   const handleStartTask = () => {
     if (task?.url) {
         const tg = (window as any).Telegram?.WebApp;
-        const linkWithUid = task.type === TaskType.SHORTLINK 
-            ? `${task.url}${task.url.includes('?') ? '&' : '?'}uid=${getCurrentUserId()}` 
+        
+        // Pass both uid and tid for maximum shortlink provider compatibility
+        const linkWithParams = task.type === TaskType.SHORTLINK 
+            ? `${task.url}${task.url.includes('?') ? '&' : '?'}uid=${getCurrentUserId()}&tid=${task.id}` 
             : task.url;
             
         if (task.type === TaskType.WEBSITE) {
             setShowViewer(true);
             setIsTimerRunning(true);
+        } else if (task.type === TaskType.TELEGRAM || task.type === TaskType.TELEGRAM_CHANNEL || task.type === TaskType.TELEGRAM_BOT) {
+            if (tg && typeof tg.openTelegramLink === 'function') {
+                tg.openTelegramLink(linkWithParams);
+            } else {
+                window.open(linkWithParams, '_blank');
+            }
+            setHasOpenedLink(true);
+            // No timer for Telegram join tasks, we rely on verify button
         } else {
             if (tg && typeof tg.openLink === 'function') {
-                tg.openLink(linkWithUid);
+                tg.openLink(linkWithParams);
             } else {
-                window.open(linkWithUid, '_blank');
+                window.open(linkWithParams, '_blank');
             }
             
             if (task.type !== TaskType.SHORTLINK) {
                 setIsTimerRunning(true);
+            } else {
+                setHasOpenedLink(true);
             }
         }
     }
@@ -146,6 +158,8 @@ export const TaskRunner: React.FC = () => {
       }
   };
 
+  const isTelegramTask = task?.type === TaskType.TELEGRAM || task?.type === TaskType.TELEGRAM_CHANNEL || task?.type === TaskType.TELEGRAM_BOT;
+
   if (!task || !adSettings) {
       return (
           <div className="flex flex-col items-center justify-center min-h-[60vh] text-white space-y-4">
@@ -166,7 +180,7 @@ export const TaskRunner: React.FC = () => {
             <h2 className="text-xs font-black text-white line-clamp-1 uppercase tracking-tight">{task.title}</h2>
             <p className="text-[9px] text-blue-400 font-black uppercase tracking-widest mt-1">Reward: {task.reward} Points</p>
           </div>
-          {task.type !== TaskType.SHORTLINK && !isCompleted && (
+          {task.type !== TaskType.SHORTLINK && !isCompleted && !isTelegramTask && (
               <div className={`flex items-center gap-2.5 font-mono text-2xl font-black tabular-nums ${timeLeft === 0 ? 'text-green-500' : 'text-blue-500'}`}>
                   <Timer size={20} className={isTimerRunning ? 'animate-pulse' : ''} />
                   {timeLeft}s
@@ -187,18 +201,23 @@ export const TaskRunner: React.FC = () => {
                    task.type === TaskType.WEBSITE ? <Globe size={64} className="text-blue-500" /> : 
                    task.type === TaskType.YOUTUBE ? <PlayCircle size={64} className="text-red-500" /> :
                    task.type === TaskType.SHORTLINK ? <Lock size={64} className="text-amber-500" /> :
+                   (task.type === TaskType.TELEGRAM_BOT) ? <Bot size={64} className="text-blue-400" /> :
                    <Send size={64} className="text-blue-400" />}
               </div>
 
               <div className="space-y-4">
                 <h3 className="text-2xl font-black text-white uppercase tracking-tight leading-none">
                     {isCompleted ? 'MISSION SECURED' : 
-                     task.type === TaskType.SHORTLINK ? 'Unlock Secure Resource' : 'Start Earning'}
+                     task.type === TaskType.SHORTLINK ? 'Unlock Secure Resource' : 
+                     task.type === TaskType.TELEGRAM_BOT ? 'Join Secure Bot' :
+                     task.type === TaskType.TELEGRAM_CHANNEL ? 'Join Community Channel' : 'Start Earning'}
                 </h3>
                 <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest leading-relaxed">
                     {isCompleted ? 'Asset decrypted and rewards applied.' : 
                      task.type === TaskType.SHORTLINK 
                         ? 'Follow the link and solve the security challenge to unlock.' 
+                        : isTelegramTask 
+                        ? `Click the button below to join ${task.channelUsername || 'the target'} and then verify.`
                         : `Complete the ${task.durationSeconds}s requirement to verify.`}
                 </p>
               </div>
@@ -226,14 +245,32 @@ export const TaskRunner: React.FC = () => {
                   </div>
               ) : (
                   <div className="space-y-4">
-                    {!isTimerRunning && timeLeft > 0 ? (
-                        <button 
-                            onClick={handleStartTask} 
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.8rem] shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
-                        >
-                            {task.type === TaskType.SHORTLINK ? <ExternalLink size={18}/> : <PlayCircle size={18} />} 
-                            DEPLOY MISSION
-                        </button>
+                    {(!isTimerRunning && (timeLeft > 0 || isTelegramTask)) ? (
+                        <div className="space-y-4">
+                            <button 
+                                onClick={handleStartTask} 
+                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.8rem] shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+                            >
+                                {task.type === TaskType.SHORTLINK ? <ExternalLink size={18}/> : 
+                                 isTelegramTask ? <Send size={18} /> : <PlayCircle size={18} />} 
+                                {isTelegramTask ? 'JOIN TELEGRAM' : 'DEPLOY MISSION'}
+                            </button>
+                            
+                            {(isTelegramTask && hasOpenedLink) && (
+                                <button 
+                                    onClick={handleVerify} 
+                                    className="w-full bg-green-600 hover:bg-green-700 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.8rem] shadow-xl transition-all active:scale-95 animate-in zoom-in"
+                                >
+                                    VERIFY JOIN
+                                </button>
+                            )}
+                            
+                            {task.type === TaskType.SHORTLINK && hasOpenedLink && (
+                                <p className="text-amber-500 text-[8px] font-black uppercase tracking-[0.2em] animate-pulse">
+                                    Waiting for postback from provider...
+                                </p>
+                            )}
+                        </div>
                     ) : timeLeft > 0 ? (
                         <div className="space-y-6">
                             <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden border border-white/5 shadow-inner">

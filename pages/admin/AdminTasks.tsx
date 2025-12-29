@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Task, TaskType, TaskStatus } from '../../types';
 import { getTasks, saveTask, deleteTask, subscribeToChanges } from '../../services/mockDb';
-import { Trash2, Edit, Plus, Video, Globe, FileText, Send, AlertCircle, Link as LinkIcon, Lock } from 'lucide-react';
+import { Trash2, Edit, Plus, Video, Globe, FileText, Send, AlertCircle, Link as LinkIcon, Lock, Bot } from 'lucide-react';
 
 export const AdminTasks: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -81,7 +81,7 @@ export const AdminTasks: React.FC = () => {
             type,
             reward,
             url: finalUrl,
-            channelUsername: type === TaskType.TELEGRAM ? channelUsername : undefined,
+            channelUsername: (type === TaskType.TELEGRAM || type === TaskType.TELEGRAM_CHANNEL || type === TaskType.TELEGRAM_BOT) ? channelUsername : undefined,
             durationSeconds: duration,
             totalLimit: limit,
             completedCount: existingTask ? existingTask.completedCount : 0, 
@@ -149,7 +149,8 @@ export const AdminTasks: React.FC = () => {
                       <select className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1 focus:border-blue-500 outline-none" value={type} onChange={e => setType(e.target.value as TaskType)}>
                           <option value={TaskType.YOUTUBE}>YouTube Video</option>
                           <option value={TaskType.WEBSITE}>Website Visit</option>
-                          <option value={TaskType.TELEGRAM}>Telegram Join</option>
+                          <option value={TaskType.TELEGRAM_CHANNEL}>Telegram Channel Join</option>
+                          <option value={TaskType.TELEGRAM_BOT}>Telegram Bot Join</option>
                           <option value={TaskType.SHORTLINK}>Shortlink + File</option>
                           <option value={TaskType.CUSTOM}>Custom Job</option>
                       </select>
@@ -158,6 +159,13 @@ export const AdminTasks: React.FC = () => {
                       <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Reward (Pts)</label>
                       <input type="number" className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1 focus:border-blue-500 outline-none" required value={reward} onChange={e => setReward(Number(e.target.value))} />
                   </div>
+
+                  {(type === TaskType.TELEGRAM_CHANNEL || type === TaskType.TELEGRAM_BOT || type === TaskType.TELEGRAM) && (
+                      <div>
+                          <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Channel Username (e.g. @mychannel)</label>
+                          <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={channelUsername} onChange={e => setChannelUsername(e.target.value)} placeholder="@mychannel" />
+                      </div>
+                  )}
 
                   {type === TaskType.SHORTLINK ? (
                       <div className="md:col-span-2 space-y-6 p-6 bg-blue-500/5 rounded-3xl border border-blue-500/10">
@@ -184,7 +192,7 @@ export const AdminTasks: React.FC = () => {
                                   <code className="bg-[#030712] p-3 rounded-lg text-blue-400 font-mono text-[10px] flex-1 break-all">{postbackUrl}</code>
                                   <button type="button" onClick={() => navigator.clipboard.writeText(postbackUrl)} className="p-3 bg-white/5 rounded-xl hover:text-white transition-colors"><LinkIcon size={16} /></button>
                               </div>
-                              <p className="text-[9px] text-gray-600 mt-2 italic">* Use {`{uid}`} and {`{tid}`} variables in your shortlink provider settings.</p>
+                              <p className="text-[9px] text-gray-600 mt-2 italic">* Provide this URL to your shortlink network.</p>
                           </div>
                       </div>
                   ) : (
@@ -215,7 +223,8 @@ export const AdminTasks: React.FC = () => {
                       <div className="bg-[#0b1120] p-4 rounded-2xl text-blue-500 shadow-inner group-hover:scale-110 transition-transform">
                           {task.type === TaskType.YOUTUBE ? <Video /> : 
                            task.type === TaskType.WEBSITE ? <Globe /> : 
-                           task.type === TaskType.TELEGRAM ? <Send /> :
+                           (task.type === TaskType.TELEGRAM_CHANNEL || task.type === TaskType.TELEGRAM) ? <Send /> :
+                           task.type === TaskType.TELEGRAM_BOT ? <Bot /> :
                            task.type === TaskType.SHORTLINK ? <Lock /> :
                            <FileText />}
                       </div>
