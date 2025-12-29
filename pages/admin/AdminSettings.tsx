@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getPaymentMethods, savePaymentMethod, deletePaymentMethod, updateAllPaymentMethods, getSystemSettings, saveSystemSettings } from '../../services/mockDb';
 import { WithdrawalMethod, SystemSettings } from '../../types';
-import { Plus, Trash2, Save, Bot, Lock, Code, Info, RefreshCcw, ToggleLeft, ToggleRight, DollarSign, Loader2, CreditCard } from 'lucide-react';
+import { Plus, Trash2, Save, Bot, Lock, Code, Info, RefreshCcw, ToggleLeft, ToggleRight, DollarSign, Loader2, CreditCard, Users } from 'lucide-react';
 
 export const AdminSettings: React.FC = () => {
   const [methods, setMethods] = useState<WithdrawalMethod[]>([]);
@@ -19,7 +19,9 @@ export const AdminSettings: React.FC = () => {
       minWithdrawal: 50,
       dailyRewardBase: 10,
       dailyRewardStreakBonus: 2,
-      pointsPerDollar: 1000
+      pointsPerDollar: 1000,
+      referralBonusReferrer: 25,
+      referralBonusReferee: 10
   };
 
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(defaultSystemSettings);
@@ -174,6 +176,35 @@ export const AdminSettings: React.FC = () => {
                         value={systemSettings.pointsPerDollar || 0} 
                         onChange={(e) => setSystemSettings({...systemSettings, pointsPerDollar: Number(e.target.value)})} 
                     />
+                </div>
+            </div>
+        </div>
+
+        {/* Referral System Configuration */}
+        <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden">
+            <h2 className="text-xl font-black text-white mb-6 flex items-center gap-3 tracking-tight">
+                <Users className="text-pink-500" size={24} /> Referral Rewards
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                    <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Inviter Reward (Pts)</label>
+                    <input 
+                        type="number" 
+                        className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl focus:border-pink-500 outline-none transition-all font-mono"
+                        value={systemSettings.referralBonusReferrer || 0} 
+                        onChange={(e) => setSystemSettings({...systemSettings, referralBonusReferrer: Number(e.target.value)})} 
+                    />
+                    <p className="text-[9px] text-gray-600 mt-1 italic ml-1">Points given to the person who shares the code.</p>
+                </div>
+                <div className="space-y-2">
+                    <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">New User Reward (Pts)</label>
+                    <input 
+                        type="number" 
+                        className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl focus:border-pink-500 outline-none transition-all font-mono"
+                        value={systemSettings.referralBonusReferee || 0} 
+                        onChange={(e) => setSystemSettings({...systemSettings, referralBonusReferee: Number(e.target.value)})} 
+                    />
+                    <p className="text-[9px] text-gray-600 mt-1 italic ml-1">Points given to the new user who uses the code.</p>
                 </div>
             </div>
         </div>

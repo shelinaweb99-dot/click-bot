@@ -55,6 +55,8 @@ export interface SystemSettings {
   dailyRewardBase?: number;
   dailyRewardStreakBonus?: number;
   pointsPerDollar?: number;
+  referralBonusReferrer?: number;
+  referralBonusReferee?: number;
 }
 
 export interface Announcement {

@@ -52,6 +52,7 @@ export const ShortsFeed: React.FC = () => {
         const now = Date.now();
         const validVideos = allVideos.filter(video => {
             const history = u?.shortsData?.lastWatched;
+            // The history can be a Map or a plain object depending on the session state
             const lastWatchedStr = (history instanceof Map) 
                 ? history.get(video.id) 
                 : (history ? (history as any)[video.id] : null);
@@ -59,10 +60,17 @@ export const ShortsFeed: React.FC = () => {
             if (!lastWatchedStr) return true;
             const lastWatchedTime = new Date(lastWatchedStr).getTime();
             const diffHours = (now - lastWatchedTime) / (1000 * 60 * 60);
-            return diffHours >= 24; 
+            return diffHours >= 8; // UPDATED FROM 24 TO 8 HOURS
         });
 
-        setVideos(validVideos);
+        // FISHER-YATES SHUFFLE FOR RANDOMIZATION
+        const shuffled = [...validVideos];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+
+        setVideos(shuffled);
         setSettings(s);
         setAdSettings(a);
         if (u) setUserShortsData(u.shortsData);
@@ -165,7 +173,6 @@ export const ShortsFeed: React.FC = () => {
           if (isMountedRef.current && res.success) {
               setCurrentVideoStatus('COMPLETED');
               
-              // Correctly update local count for ad tracking
               const newWatchedTodayCount = (userShortsData?.watchedTodayCount || 0) + 1;
               
               setUserShortsData(prev => ({
@@ -173,10 +180,8 @@ export const ShortsFeed: React.FC = () => {
                   watchedTodayCount: newWatchedTodayCount
               }));
 
-              // AUTOMATIC AD TRIGGER
               const freq = settings?.adFrequency || 10;
               if (newWatchedTodayCount > 0 && newWatchedTodayCount % freq === 0) {
-                  // Ad pops automatically after 1 second of victory screen
                   setTimeout(() => {
                       if (isMountedRef.current) {
                           setShowAd(true);
@@ -184,7 +189,6 @@ export const ShortsFeed: React.FC = () => {
                   }, 1200);
               }
 
-              // Remove the video from list after a short delay
               setTimeout(() => {
                   if (isMountedRef.current) {
                       setVideos(prev => prev.filter(v => v.id !== videoId));
@@ -201,7 +205,6 @@ export const ShortsFeed: React.FC = () => {
       if (!userId) return;
       try {
           await recordAdReward(userId);
-          // Silent refresh to update balance in background
           loadData(true);
       } catch (e) { console.error(e); }
   };
@@ -219,10 +222,10 @@ export const ShortsFeed: React.FC = () => {
       return (
           <div className="flex flex-col items-center justify-center h-[calc(100vh-80px)] bg-[#030712] text-white p-6 text-center animate-in fade-in duration-500">
               <Clock size={48} className="text-gray-700 mb-6" />
-              <h2 className="text-2xl font-black tracking-tight uppercase">DAILY MISSIONS DONE</h2>
-              <p className="text-gray-500 mt-2 text-sm max-w-[240px] leading-relaxed font-medium italic">You've watched all available videos for now. Each video resets 24 hours after completion.</p>
+              <h2 className="text-2xl font-black tracking-tight uppercase">MISSION RECHARGING</h2>
+              <p className="text-gray-500 mt-2 text-sm max-w-[240px] leading-relaxed font-medium italic">You've watched all currently available videos. New ones arrive every 8 hours.</p>
               <button onClick={() => loadData(true)} className="mt-8 bg-gray-900 border border-white/5 px-8 py-4 rounded-2xl text-blue-500 text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl">
-                Refresh Status
+                Check Status
               </button>
           </div>
       );

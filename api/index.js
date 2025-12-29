@@ -47,6 +47,7 @@ const UserSchema = new mongoose.Schema({
     lastActivityTime: { type: Number, default: 0 },
     dailyStreak: { type: Number, default: 0 },
     ipAddress: String,
+    deviceId: String,
     name: String,
     country: String,
     joinedAt: String,
@@ -226,6 +227,8 @@ export default async function handler(req, res) {
                 if (!(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: "Invalid." });
                 user.sessionToken = newToken; user.tokenExpires = expires;
                 if (userData.telegramId) user.telegramId = userData.telegramId;
+                if (userData.deviceId) user.deviceId = userData.deviceId;
+                if (userData.ipAddress) user.ipAddress = userData.ipAddress;
                 await user.save();
             }
             const userObj = user.toObject(); delete userObj.password;
@@ -239,16 +242,30 @@ export default async function handler(req, res) {
             case 'getTasks': {
                 const tasks = await Task.find({ status: 'ACTIVE' }).lean();
                 if (currentUser.role === 'ADMIN') return res.json(tasks);
-                const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-                const recentTx = await Transaction.find({ 
+
+                const allEarningTx = await Transaction.find({ 
                     userId: currentUser.id, 
-                    type: 'EARNING',
-                    date: { $gte: yesterday }
-                }).select('taskId').lean();
-                const recentTaskIds = new Set(recentTx.map(tx => tx.taskId));
+                    type: 'EARNING'
+                }).select('taskId date').lean();
+
+                const now = Date.now();
+                const oneDayAgo = now - 24 * 60 * 60 * 1000;
+                
+                const completedAllTime = new Set(allEarningTx.map(tx => tx.taskId));
+                const completedRecently = new Set(
+                    allEarningTx
+                        .filter(tx => new Date(tx.date).getTime() > oneDayAgo)
+                        .map(tx => tx.taskId)
+                );
+
                 const visibleTasks = tasks.filter(t => {
-                    const earningTypes = ['WEBSITE', 'YOUTUBE', 'TELEGRAM', 'TELEGRAM_CHANNEL', 'TELEGRAM_BOT'];
-                    if (earningTypes.includes(t.type) && recentTaskIds.has(t.id)) return false;
+                    if (t.type === 'SHORTLINK' || t.type === 'TELEGRAM_CHANNEL') {
+                        if (completedAllTime.has(t.id)) return false;
+                    }
+                    const cooldownTypes = ['WEBSITE', 'YOUTUBE', 'TELEGRAM', 'TELEGRAM_BOT', 'CUSTOM'];
+                    if (cooldownTypes.includes(t.type)) {
+                        if (completedRecently.has(t.id)) return false;
+                    }
                     return true;
                 });
                 return res.json(visibleTasks);
@@ -271,15 +288,11 @@ export default async function handler(req, res) {
                 const task = await Task.findOne({ id: taskId }).lean();
                 if (!task) return res.status(404).json({ message: "Task unavailable." });
 
-                // NEW: MANUAL VERIFICATION FOR SHORTLINK
                 if (task.type === 'SHORTLINK') {
                     if (!verificationAnswer) return res.status(400).json({ message: "Verification answer required." });
                     const correctVal = (task.fileTitle || '').trim().toLowerCase();
                     const inputVal = (verificationAnswer || '').trim().toLowerCase();
-                    
-                    if (correctVal !== inputVal) {
-                        return res.status(400).json({ message: "Verification failed: Information not found, please try again." });
-                    }
+                    if (correctVal !== inputVal) return res.status(400).json({ message: "Verification failed: Information not found, please try again." });
                 }
 
                 if (task.type === 'TELEGRAM_CHANNEL' || task.type === 'TELEGRAM_BOT' || task.type === 'TELEGRAM') {
@@ -293,9 +306,13 @@ export default async function handler(req, res) {
                     }
                 }
 
-                const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-                const existing = await Transaction.findOne({ userId: currentUser.id, taskId: task.id, type: 'EARNING', date: { $gte: yesterday } });
-                if (existing) return res.status(400).json({ message: "Already completed." });
+                const existing = await Transaction.findOne({ userId: currentUser.id, taskId: task.id, type: 'EARNING' });
+                if (existing) {
+                    if (task.type === 'SHORTLINK' || task.type === 'TELEGRAM_CHANNEL') return res.status(400).json({ message: "One-time mission already completed." });
+                    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                    const recent = await Transaction.findOne({ userId: currentUser.id, taskId: task.id, type: 'EARNING', date: { $gte: yesterday } });
+                    if (recent) return res.status(400).json({ message: "Task on cooldown. Try again in 24h." });
+                }
 
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: task.reward } });
                 await Transaction.create({ id: 'tx_m_' + Date.now(), userId: currentUser.id, taskId: task.id, amount: task.reward, type: 'EARNING', description: `Mission Completed: ${task.title}`, date: new Date().toISOString() });
@@ -344,8 +361,25 @@ export default async function handler(req, res) {
                 const { videoId } = data;
                 const shortsSettingsDoc = await Setting.findById('shorts').lean();
                 const points = shortsSettingsDoc?.data?.pointsPerVideo || 5;
-                await User.updateOne({ id: currentUser.id }, { $inc: { balance: points } });
-                await Transaction.create({ id: 'tx_s_' + Date.now(), userId: currentUser.id, amount: points, type: 'SHORTS', description: `Watched Shorts Video`, date: new Date().toISOString() });
+                const now = new Date().toISOString();
+                
+                await User.updateOne(
+                    { id: currentUser.id }, 
+                    { 
+                        $inc: { balance: points },
+                        $set: { [`shortsData.lastWatched.${videoId}`]: now },
+                        $inc: { "shortsData.watchedTodayCount": 1 }
+                    }
+                );
+                
+                await Transaction.create({ 
+                    id: 'tx_s_' + Date.now(), 
+                    userId: currentUser.id, 
+                    amount: points, 
+                    type: 'SHORTS', 
+                    description: `Watched Shorts Video`, 
+                    date: now 
+                });
                 return res.json({ success: true });
             }
             case 'dailyCheckIn': {
@@ -386,17 +420,59 @@ export default async function handler(req, res) {
             case 'getWithdrawals': return res.json(await Withdrawal.find({ userId: currentUser.id }).sort({ date: -1 }).lean());
             case 'processReferral': {
                 const { code } = data;
-                if (currentUser.referredBy) return res.status(400).json({ message: "Already referred." });
-                if (currentUser.id === code) return res.status(400).json({ message: "Restricted." });
+                if (currentUser.referredBy) return res.status(400).json({ message: "You have already applied a referral code." });
+                if (currentUser.id === code) return res.status(400).json({ message: "Restricted: You cannot refer yourself." });
+                
                 const referrer = await User.findOne({ id: code });
-                if (!referrer) return res.status(404).json({ message: "Invalid ID." });
+                if (!referrer) return res.status(404).json({ message: "Invalid Referral ID." });
+
+                // STRICT MULTI-ACCOUNTING SECURITY CHECKS
+                if (currentUser.deviceId && (currentUser.deviceId === referrer.deviceId)) {
+                    return res.status(400).json({ message: "Security Alert: Referral restricted on the same device." });
+                }
+                
+                if (currentUser.deviceId) {
+                    const deviceCheck = await User.findOne({ deviceId: currentUser.deviceId, referredBy: { $exists: true }, id: { $ne: currentUser.id } });
+                    if (deviceCheck) return res.status(400).json({ message: "Security Alert: This device has already claimed a referral bonus." });
+                }
+
+                if (currentUser.ipAddress && (currentUser.ipAddress === referrer.ipAddress)) {
+                    return res.status(400).json({ message: "Security Alert: Referrals from the same network (IP) are restricted." });
+                }
+
+                const sysSettings = await Setting.findById('system').lean();
+                const bonusReferrer = sysSettings?.data?.referralBonusReferrer || 25;
+                const bonusReferee = sysSettings?.data?.referralBonusReferee || 10;
+
                 currentUser.referredBy = code;
-                currentUser.balance += 10;
-                referrer.balance += 25;
+                currentUser.balance += bonusReferee;
+                
+                referrer.balance += bonusReferrer;
                 referrer.referralCount = (referrer.referralCount || 0) + 1;
-                referrer.referralEarnings = (referrer.referralEarnings || 0) + 25;
-                await Promise.all([currentUser.save(), referrer.save()]);
-                return res.json({ success: true, message: "Applied!" });
+                referrer.referralEarnings = (referrer.referralEarnings || 0) + bonusReferrer;
+                
+                await Promise.all([
+                    currentUser.save(), 
+                    referrer.save(),
+                    Transaction.create({ 
+                        id: 'tx_ref_referee_' + Date.now(), 
+                        userId: currentUser.id, 
+                        amount: bonusReferee, 
+                        type: 'REFERRAL', 
+                        description: `Joined via Invite (Bonus Received)`, 
+                        date: new Date().toISOString() 
+                    }),
+                    Transaction.create({ 
+                        id: 'tx_ref_referrer_' + Date.now(), 
+                        userId: referrer.id, 
+                        amount: bonusReferrer, 
+                        type: 'REFERRAL', 
+                        description: `New Referral: ${currentUser.name || 'User'}`, 
+                        date: new Date().toISOString() 
+                    })
+                ]);
+
+                return res.json({ success: true, message: "Referral Applied Successfully!" });
             }
             case 'saveTask': {
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
