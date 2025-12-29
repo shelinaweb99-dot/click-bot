@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Task, TaskType, AdSettings } from '../../types';
 import { getTasks, verifyAndCompleteTask, getCurrentUserId, getAdSettings, getTransactions, getProtectedFile } from '../../services/mockDb';
-import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, Timer, ShieldAlert, X, Info, Lock, Download, ExternalLink, Zap, FileText, Minimize2, ExternalLink as OpenIcon, Bot } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, Timer, ShieldAlert, X, Info, Lock, Download, ExternalLink, Zap, FileText, Minimize2, ExternalLink as OpenIcon, Bot, AlertTriangle } from 'lucide-react';
 import { AdSimulator } from '../../components/AdSimulator';
 import { NativeBannerModal } from '../../components/NativeBannerModal';
 
@@ -15,6 +15,7 @@ export const TaskRunner: React.FC = () => {
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [hasOpenedLink, setHasOpenedLink] = useState(false);
   const [isVerifyingFake, setIsVerifyingFake] = useState(false);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
   const [showAd, setShowAd] = useState(false);
   const [showNativeBanner, setShowNativeBanner] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -92,9 +93,9 @@ export const TaskRunner: React.FC = () => {
 
   const handleStartTask = () => {
     if (task?.url) {
+        setVerificationError(null);
         const tg = (window as any).Telegram?.WebApp;
         
-        // Ensure Telegram URLs are valid
         let targetUrl = task.url;
         if ((task.type === TaskType.TELEGRAM || task.type === TaskType.TELEGRAM_CHANNEL || task.type === TaskType.TELEGRAM_BOT) && !targetUrl.startsWith('http')) {
             const handle = targetUrl.startsWith('@') ? targetUrl.slice(1) : targetUrl;
@@ -132,14 +133,15 @@ export const TaskRunner: React.FC = () => {
   };
 
   const handleVerify = () => {
+      setVerificationError(null);
       if (isTelegramTask) {
           setIsVerifyingFake(true);
+          // Actual backend call will happen in completeTask called after Ad/Spinner
           setTimeout(() => {
               if (isMounted.current) {
-                  setIsVerifyingFake(false);
-                  setShowAd(true);
+                  completeTask();
               }
-          }, 2000);
+          }, 1500);
       } else {
           setShowAd(true);
       }
@@ -155,16 +157,19 @@ export const TaskRunner: React.FC = () => {
     try {
         const userId = getCurrentUserId();
         if (!userId) return;
+        
         const result = await verifyAndCompleteTask(userId, task.id);
         if (result.success) {
             setIsCompleted(true);
+            setIsVerifyingFake(false);
             window.dispatchEvent(new Event('db_change'));
             if (adSettings?.nativeBanner?.isEnabled) {
                 setShowNativeBanner(true);
             }
         }
     } catch (e: any) {
-        alert(e.message || "Manual verification failed.");
+        setIsVerifyingFake(false);
+        setVerificationError(e.message || "Manual verification failed.");
     }
   };
 
@@ -238,6 +243,16 @@ export const TaskRunner: React.FC = () => {
                         : `Complete the ${task.durationSeconds}s requirement to verify.`}
                 </p>
               </div>
+
+              {verificationError && (
+                  <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-start gap-3 text-left animate-in slide-in-from-top-2">
+                      <AlertTriangle className="text-red-500 shrink-0 mt-0.5" size={16} />
+                      <div>
+                          <p className="text-red-400 text-[10px] font-black uppercase tracking-widest leading-tight">Verification Error</p>
+                          <p className="text-gray-400 text-[9px] mt-1 font-medium">{verificationError}</p>
+                      </div>
+                  </div>
+              )}
 
               {isCompleted ? (
                   <div className="space-y-4">
