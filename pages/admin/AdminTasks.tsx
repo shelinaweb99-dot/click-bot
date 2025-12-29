@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Task, TaskType, TaskStatus } from '../../types';
 import { getTasks, saveTask, deleteTask, subscribeToChanges } from '../../services/mockDb';
-import { Trash2, Edit, Plus, Video, Globe, FileText, Send, AlertCircle, Link as LinkIcon, Lock, Bot, Info } from 'lucide-react';
+import { Trash2, Edit, Plus, Video, Globe, FileText, Send, AlertCircle, Link as LinkIcon, Lock, Bot, Info, Copy } from 'lucide-react';
 
 export const AdminTasks: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -75,7 +75,6 @@ export const AdminTasks: React.FC = () => {
             if (videoId) finalUrl = `https://www.youtube.com/embed/${videoId}`;
         }
 
-        // Auto-format Telegram links
         if ((type === TaskType.TELEGRAM || type === TaskType.TELEGRAM_CHANNEL || type === TaskType.TELEGRAM_BOT) && finalUrl) {
             if (!finalUrl.startsWith('http')) {
                 const handle = finalUrl.startsWith('@') ? finalUrl.slice(1) : finalUrl;
@@ -130,7 +129,11 @@ export const AdminTasks: React.FC = () => {
     }
   };
 
-  const postbackUrl = currentId ? `${window.location.origin}/api?action=postback&uid={uid}&tid=${currentId}` : 'Save task first to see Postback URL';
+  // Generate dynamic URL based on current host
+  const getPostbackUrl = (taskId: string) => {
+      const baseUrl = window.location.origin;
+      return `${baseUrl}/api?action=postback&uid={uid}&tid=${taskId}`;
+  };
 
   return (
     <div className="space-y-6">
@@ -146,7 +149,7 @@ export const AdminTasks: React.FC = () => {
 
       {isEditing && (
           <div className="bg-[#1e293b] p-8 rounded-[2.5rem] border border-white/5 animate-in fade-in slide-in-from-top-4 shadow-2xl">
-              <h3 className="text-xl font-black text-white mb-8 uppercase tracking-tight">{currentId ? 'Edit Resource' : 'Register New Mission'}</h3>
+              <h3 className="text-xl font-black text-white mb-8 uppercase tracking-tight">{currentId ? 'Edit Mission' : 'Deploy New Mission'}</h3>
               <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="md:col-span-2">
                       <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Task Title</label>
@@ -175,7 +178,6 @@ export const AdminTasks: React.FC = () => {
                               <p className="font-black text-blue-500 uppercase tracking-widest">Bot Setup Required</p>
                               <p>1. Add your bot to the target channel as an <strong className="text-white">Administrator</strong>.</p>
                               <p>2. Ensure the bot has "Invite Users via Link" or "Add Members" permissions enabled.</p>
-                              <p>3. Use the public handle (e.g. <code className="text-blue-400">@mychannel</code>) below.</p>
                           </div>
                       </div>
                   )}
@@ -183,22 +185,43 @@ export const AdminTasks: React.FC = () => {
                   {type === TaskType.SHORTLINK ? (
                       <div className="md:col-span-2 space-y-6 p-6 bg-blue-500/5 rounded-3xl border border-blue-500/10">
                           <div className="flex items-center gap-2 text-blue-400 font-black text-[10px] uppercase tracking-widest">
-                              <Lock size={14} /> Protected File Configuration
+                              <Lock size={14} /> Postback & Secure File Configuration
                           </div>
+                          
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div>
                                   <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">File Display Name</label>
-                                  <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={fileTitle} onChange={setFileTitle} />
+                                  <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={fileTitle} onChange={e => setFileTitle(e.target.value)} placeholder="SecretFile.zip" />
                               </div>
                               <div>
                                   <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Protected Download URL</label>
-                                  <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={fileUrl} onChange={setFileUrl} />
+                                  <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={fileUrl} onChange={e => setFileUrl(e.target.value)} placeholder="https://drive.google.com/..." />
                               </div>
                           </div>
+
                           <div className="space-y-2">
-                               <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Shortlink URL</label>
-                               <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={url} onChange={setUrl} />
+                               <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Your Shortlink (The Mission)</label>
+                               <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://gplinks.co/..." />
+                               <p className="text-[9px] text-gray-600 italic">* When user clicks this link, we append ?uid=... and ?tid=... automatically.</p>
                           </div>
+
+                          {currentId && (
+                              <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
+                                  <label className="text-gray-500 text-[9px] font-black uppercase tracking-widest">Global Postback URL Template</label>
+                                  <div className="flex items-center gap-2 mt-2">
+                                      <code className="bg-[#030712] p-3 rounded-lg text-blue-400 font-mono text-[10px] flex-1 break-all select-all">
+                                          {getPostbackUrl(currentId)}
+                                      </code>
+                                      <button type="button" onClick={() => { navigator.clipboard.writeText(getPostbackUrl(currentId)); alert("Copied!"); }} className="p-3 bg-white/5 rounded-xl hover:text-white transition-colors">
+                                          <Copy size={16} />
+                                      </button>
+                                  </div>
+                                  <p className="text-[9px] text-gray-600 mt-2 leading-relaxed">
+                                      * Go to your Shortlink provider's settings and paste this as your Postback/Webhook URL. 
+                                      Replace <strong className="text-blue-500">{`{uid}`}</strong> with your network's UserID macro (e.g. {`[subid]`} or {`{subid}`}).
+                                  </p>
+                              </div>
+                          )}
                       </div>
                   ) : (
                       <div className="md:col-span-2">
@@ -215,7 +238,7 @@ export const AdminTasks: React.FC = () => {
                         disabled={isSaving}
                         className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 text-white font-black text-xs uppercase tracking-widest py-5 rounded-[1.5rem] shadow-xl transition-all active:scale-95"
                       >
-                        {isSaving ? 'Synchronizing...' : 'Commit Mission'}
+                        {isSaving ? 'Synchronizing...' : 'Commit Changes'}
                       </button>
                       <button type="button" onClick={() => setIsEditing(false)} className="px-8 bg-white/5 hover:bg-white/10 text-gray-500 hover:text-white py-5 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all">Cancel</button>
                   </div>

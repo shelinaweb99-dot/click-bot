@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Task, TaskType, AdSettings } from '../../types';
 import { getTasks, verifyAndCompleteTask, getCurrentUserId, getAdSettings, getTransactions, getProtectedFile } from '../../services/mockDb';
-import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, Timer, ShieldAlert, X, Info, Lock, Download, ExternalLink, Zap, FileText, Minimize2, ExternalLink as OpenIcon, Bot, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, Timer, ShieldAlert, X, Info, Lock, Download, ExternalLink, Zap, FileText, Minimize2, ExternalLink as OpenIcon, Bot, AlertTriangle, Activity } from 'lucide-react';
 import { AdSimulator } from '../../components/AdSimulator';
 import { NativeBannerModal } from '../../components/NativeBannerModal';
 
@@ -67,17 +67,18 @@ export const TaskRunner: React.FC = () => {
     };
     init();
 
+    // Intensive status monitoring for shortlinks
     const interval = setInterval(() => {
-        if (!isCompleted && task?.type === TaskType.SHORTLINK) {
+        if (!isCompleted && task?.type === TaskType.SHORTLINK && hasOpenedLink) {
             checkCompletion();
         }
-    }, 5000);
+    }, 4000);
 
     return () => {
         isMounted.current = false;
         clearInterval(interval);
     };
-  }, [taskId, navigate, isCompleted, task?.type]);
+  }, [taskId, navigate, isCompleted, task?.type, hasOpenedLink]);
 
   useEffect(() => {
     let interval: any;
@@ -102,6 +103,7 @@ export const TaskRunner: React.FC = () => {
             targetUrl = `https://t.me/${handle}`;
         }
 
+        // ROBUST SHORTLINK CONSTRUCTION
         const linkWithParams = task.type === TaskType.SHORTLINK 
             ? `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}uid=${getCurrentUserId()}&tid=${task.id}` 
             : targetUrl;
@@ -136,7 +138,6 @@ export const TaskRunner: React.FC = () => {
       setVerificationError(null);
       if (isTelegramTask) {
           setIsVerifyingFake(true);
-          // Actual backend call will happen in completeTask called after Ad/Spinner
           setTimeout(() => {
               if (isMounted.current) {
                   completeTask();
@@ -203,10 +204,15 @@ export const TaskRunner: React.FC = () => {
           </div>
           {task.type !== TaskType.SHORTLINK && !isCompleted && !isTelegramTask && (
               <div className={`flex items-center gap-2.5 font-mono text-2xl font-black tabular-nums ${timeLeft === 0 ? 'text-green-500' : 'text-blue-500'}`}>
-                  <span className="text-xs uppercase font-black mr-2 opacity-50">Timer</span>
                   <Timer size={20} className={isTimerRunning ? 'animate-pulse' : ''} />
                   {timeLeft}s
               </div>
+          )}
+          {task.type === TaskType.SHORTLINK && hasOpenedLink && !isCompleted && (
+               <div className="flex items-center gap-2 bg-amber-500/10 px-4 py-2 rounded-2xl border border-amber-500/20 animate-pulse">
+                   <Activity size={14} className="text-amber-500" />
+                   <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Awaiting Link</span>
+               </div>
           )}
           {isCompleted && (
                <div className="bg-green-500/10 p-3 rounded-2xl text-green-500 border border-green-500/10">
@@ -230,14 +236,14 @@ export const TaskRunner: React.FC = () => {
               <div className="space-y-4">
                 <h3 className="text-2xl font-black text-white uppercase tracking-tight leading-none">
                     {isCompleted ? 'MISSION SECURED' : 
-                     task.type === TaskType.SHORTLINK ? 'Unlock Secure Resource' : 
+                     task.type === TaskType.SHORTLINK ? (hasOpenedLink ? 'LIVE MONITORING' : 'Unlock Resource') : 
                      task.type === TaskType.TELEGRAM_BOT ? 'Join Secure Bot' :
                      task.type === TaskType.TELEGRAM_CHANNEL ? 'Join Community Channel' : 'Start Earning'}
                 </h3>
                 <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest leading-relaxed">
                     {isCompleted ? 'Asset decrypted and rewards applied.' : 
                      task.type === TaskType.SHORTLINK 
-                        ? 'Follow the link and solve the security challenge to unlock.' 
+                        ? (hasOpenedLink ? 'App is waiting for provider confirmation. Do not close this window.' : 'Follow the link and solve the challenge to unlock your reward.') 
                         : isTelegramTask 
                         ? `Click the button below to join the target Telegram resource and then verify.`
                         : `Complete the ${task.durationSeconds}s requirement to verify.`}
@@ -281,12 +287,15 @@ export const TaskRunner: React.FC = () => {
                         <div className="space-y-4">
                             <button 
                                 onClick={handleStartTask} 
-                                disabled={isVerifyingFake}
-                                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.8rem] shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+                                disabled={isVerifyingFake || (task.type === TaskType.SHORTLINK && hasOpenedLink)}
+                                className={`w-full font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.8rem] shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2 
+                                ${task.type === TaskType.SHORTLINK && hasOpenedLink 
+                                    ? 'bg-gray-800 text-gray-500 cursor-not-allowed' 
+                                    : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
                             >
                                 {task.type === TaskType.SHORTLINK ? <ExternalLink size={18}/> : 
                                  isTelegramTask ? <Send size={18} /> : <PlayCircle size={18} />} 
-                                {isTelegramTask ? 'OPEN TELEGRAM' : 'DEPLOY MISSION'}
+                                {isTelegramTask ? 'OPEN TELEGRAM' : (task.type === TaskType.SHORTLINK ? 'OPEN SHORTLINK' : 'DEPLOY MISSION')}
                             </button>
                             
                             {(isTelegramTask && hasOpenedLink) && (
@@ -301,9 +310,25 @@ export const TaskRunner: React.FC = () => {
                             )}
                             
                             {task.type === TaskType.SHORTLINK && hasOpenedLink && (
-                                <div className="p-4 bg-amber-500/5 rounded-2xl border border-amber-500/10">
-                                    <p className="text-amber-500 text-[8px] font-black uppercase tracking-[0.2em] animate-pulse">
-                                        Waiting for network postback... points will be added automatically once provider confirms.
+                                <div className="space-y-4 animate-in fade-in">
+                                    <div className="p-5 bg-[#030712] rounded-[1.8rem] border border-white/5 space-y-4">
+                                        <div className="flex items-center justify-center gap-3">
+                                            <div className="flex gap-1">
+                                                <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                                                <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                                                <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                                            </div>
+                                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Listening for rewards...</p>
+                                        </div>
+                                        <button 
+                                            onClick={checkCompletion}
+                                            className="text-blue-500 text-[9px] font-black uppercase tracking-[0.3em] hover:text-blue-400 transition-colors w-full"
+                                        >
+                                            Check Status Manually
+                                        </button>
+                                    </div>
+                                    <p className="text-gray-600 text-[8px] font-black uppercase tracking-widest px-4">
+                                        Note: Do not close this app until points are added. Confirmation typically takes 10-30 seconds.
                                     </p>
                                 </div>
                             )}
@@ -336,10 +361,8 @@ export const TaskRunner: React.FC = () => {
           </div>
       </div>
 
-      {/* Internal Full-Screen Viewer for Website Tasks */}
       {showViewer && task.type === TaskType.WEBSITE && (
           <div className="fixed inset-0 z-[1000] bg-black flex flex-col animate-in slide-in-from-bottom duration-300">
-              {/* Internal Browser HUD */}
               <div className="bg-[#1e293b] p-4 flex justify-between items-center border-b border-white/5 shadow-2xl relative z-20">
                    <div className="flex flex-col min-w-0 pr-4">
                        <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest">Internal Session</span>
@@ -352,8 +375,6 @@ export const TaskRunner: React.FC = () => {
                        </div>
                    </div>
               </div>
-              
-              {/* The Iframe Browser Surface */}
               <div className="flex-1 bg-white relative overflow-hidden">
                   <iframe 
                     src={task.url} 
@@ -363,8 +384,6 @@ export const TaskRunner: React.FC = () => {
                     loading="lazy"
                   />
               </div>
-              
-              {/* Footer Indicator */}
               <div className="p-3 bg-black/40 text-center border-t border-white/5">
                   <p className="text-[7px] text-gray-600 font-black uppercase tracking-[0.4em]">DO NOT CLOSE &bull; BOT VERIFICATION IN PROGRESS</p>
               </div>
