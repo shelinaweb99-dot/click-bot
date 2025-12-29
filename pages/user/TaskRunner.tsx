@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Task, TaskType, AdSettings } from '../../types';
 import { getTasks, verifyAndCompleteTask, getCurrentUserId, getAdSettings, getTransactions, getProtectedFile } from '../../services/mockDb';
-import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, Timer, ShieldAlert, X, Info, Lock, Download, ExternalLink, Zap, FileText, Minimize2, ExternalLink as OpenIcon, Bot, AlertTriangle, Activity, RefreshCw } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, Timer, ShieldAlert, X, Info, Lock, Download, ExternalLink, Zap, FileText, Minimize2, ExternalLink as OpenIcon, Bot, AlertTriangle, Activity, RefreshCw, Key } from 'lucide-react';
 import { AdSimulator } from '../../components/AdSimulator';
 import { NativeBannerModal } from '../../components/NativeBannerModal';
 
@@ -14,47 +14,32 @@ export const TaskRunner: React.FC = () => {
   const [timeLeft, setTimeLeft] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [hasOpenedLink, setHasOpenedLink] = useState(false);
-  const [isVerifyingFake, setIsVerifyingFake] = useState(false);
+  const [isVerifyingManual, setIsVerifyingManual] = useState(false);
   const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [verificationInput, setVerificationInput] = useState('');
   const [showAd, setShowAd] = useState(false);
   const [showNativeBanner, setShowNativeBanner] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [adSettings, setAdSettings] = useState<AdSettings | null>(null);
   const [showViewer, setShowViewer] = useState(false);
-  const [fileData, setFileData] = useState<{url: string, title: string} | null>(null);
-  const [isManualChecking, setIsManualChecking] = useState(false);
   const isMounted = useRef(true);
 
-  const checkCompletion = async (isManual = false) => {
+  const checkCompletion = async () => {
       if (!taskId || !isMounted.current) return;
       const userId = getCurrentUserId();
       if (!userId) return;
       
-      if (isManual) setIsManualChecking(true);
+      const txs = await getTransactions(userId, true);
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).getTime();
       
-      try {
-          const txs = await getTransactions(userId, true); // Force refresh from server
-          const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).getTime();
-          
-          const done = txs.some(tx => {
-              if (tx.taskId !== taskId || tx.type !== 'EARNING') return false;
-              const txDate = new Date(tx.date).getTime();
-              return txDate > yesterday;
-          });
-          
-          if (done && isMounted.current) {
-              setIsCompleted(true);
-              if (task?.type === TaskType.SHORTLINK) {
-                  const fileRes = await getProtectedFile(taskId);
-                  if (fileRes.success && isMounted.current) {
-                      setFileData(fileRes);
-                  }
-              }
-          }
-      } catch (e) {
-          console.error("Check status failed", e);
-      } finally {
-          if (isMounted.current) setIsManualChecking(false);
+      const done = txs.some(tx => {
+          if (tx.taskId !== taskId || tx.type !== 'EARNING') return false;
+          const txDate = new Date(tx.date).getTime();
+          return txDate > yesterday;
+      });
+      
+      if (done && isMounted.current) {
+          setIsCompleted(true);
       }
   };
 
@@ -76,18 +61,10 @@ export const TaskRunner: React.FC = () => {
     };
     init();
 
-    // Intensive status monitoring for shortlinks
-    const interval = setInterval(() => {
-        if (!isCompleted && task?.type === TaskType.SHORTLINK && hasOpenedLink) {
-            checkCompletion(false);
-        }
-    }, 5000);
-
     return () => {
         isMounted.current = false;
-        clearInterval(interval);
     };
-  }, [taskId, navigate, isCompleted, task?.type, hasOpenedLink]);
+  }, [taskId, navigate, isCompleted, task?.type]);
 
   useEffect(() => {
     let interval: any;
@@ -112,7 +89,6 @@ export const TaskRunner: React.FC = () => {
             targetUrl = `https://t.me/${handle}`;
         }
 
-        // CONSTRUCT DYNAMIC SHORTLINK URL
         const linkWithParams = task.type === TaskType.SHORTLINK 
             ? `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}uid=${getCurrentUserId()}&tid=${task.id}` 
             : targetUrl;
@@ -144,16 +120,38 @@ export const TaskRunner: React.FC = () => {
   };
 
   const handleVerify = () => {
-      setVerificationError(null);
-      if (isTelegramTask) {
-          setIsVerifyingFake(true);
-          setTimeout(() => {
-              if (isMounted.current) {
-                  completeTask();
-              }
-          }, 1500);
+      if (task?.type === TaskType.SHORTLINK) {
+          handleManualShortlinkVerify();
       } else {
+          setVerificationError(null);
           setShowAd(true);
+      }
+  };
+
+  const handleManualShortlinkVerify = async () => {
+      if (!verificationInput.trim()) {
+          setVerificationError("Please enter the downloaded file name to verify.");
+          return;
+      }
+      setVerificationError(null);
+      setIsVerifyingManual(true);
+      
+      try {
+          const userId = getCurrentUserId();
+          if (!userId || !task) return;
+          
+          const result = await verifyAndCompleteTask(userId, task.id, verificationInput);
+          if (result.success) {
+              setIsCompleted(true);
+              setIsVerifyingManual(false);
+              window.dispatchEvent(new Event('db_change'));
+              if (adSettings?.nativeBanner?.isEnabled) {
+                  setShowNativeBanner(true);
+              }
+          }
+      } catch (e: any) {
+          setIsVerifyingManual(false);
+          setVerificationError(e.message || "Manual verification failed.");
       }
   };
 
@@ -171,22 +169,14 @@ export const TaskRunner: React.FC = () => {
         const result = await verifyAndCompleteTask(userId, task.id);
         if (result.success) {
             setIsCompleted(true);
-            setIsVerifyingFake(false);
             window.dispatchEvent(new Event('db_change'));
             if (adSettings?.nativeBanner?.isEnabled) {
                 setShowNativeBanner(true);
             }
         }
     } catch (e: any) {
-        setIsVerifyingFake(false);
         setVerificationError(e.message || "Manual verification failed.");
     }
-  };
-
-  const handleDownload = () => {
-      if (fileData?.url) {
-          window.open(fileData.url, '_blank');
-      }
   };
 
   const isTelegramTask = task?.type === TaskType.TELEGRAM || task?.type === TaskType.TELEGRAM_CHANNEL || task?.type === TaskType.TELEGRAM_BOT;
@@ -217,12 +207,6 @@ export const TaskRunner: React.FC = () => {
                   {timeLeft}s
               </div>
           )}
-          {task.type === TaskType.SHORTLINK && hasOpenedLink && !isCompleted && (
-               <div className="flex items-center gap-2 bg-amber-500/10 px-4 py-2 rounded-2xl border border-amber-500/20 animate-pulse">
-                   <Activity size={14} className="text-amber-500" />
-                   <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Awaiting Link</span>
-               </div>
-          )}
           {isCompleted && (
                <div className="bg-green-500/10 p-3 rounded-2xl text-green-500 border border-green-500/10">
                    <CheckCircle size={20} />
@@ -245,14 +229,14 @@ export const TaskRunner: React.FC = () => {
               <div className="space-y-4">
                 <h3 className="text-2xl font-black text-white uppercase tracking-tight leading-none">
                     {isCompleted ? 'MISSION SECURED' : 
-                     task.type === TaskType.SHORTLINK ? (hasOpenedLink ? 'LIVE MONITORING' : 'Unlock Resource') : 
+                     task.type === TaskType.SHORTLINK ? 'Unlock Resource' : 
                      task.type === TaskType.TELEGRAM_BOT ? 'Join Secure Bot' :
                      task.type === TaskType.TELEGRAM_CHANNEL ? 'Join Community Channel' : 'Start Earning'}
                 </h3>
                 <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest leading-relaxed">
                     {isCompleted ? 'Asset decrypted and rewards applied.' : 
                      task.type === TaskType.SHORTLINK 
-                        ? (hasOpenedLink ? 'Waiting for shortlink confirmation. If you already completed it, wait a few seconds or click Manual Check.' : 'Follow the link and solve the challenge to unlock your reward.') 
+                        ? 'Complete the shortlink process, download the target file, then return to verify its name below.' 
                         : isTelegramTask 
                         ? `Click the button below to join the target Telegram resource and then verify.`
                         : `Complete the ${task.durationSeconds}s requirement to verify.`}
@@ -271,74 +255,57 @@ export const TaskRunner: React.FC = () => {
 
               {isCompleted ? (
                   <div className="space-y-4">
-                      {task.type === TaskType.SHORTLINK && fileData && (
-                          <div className="bg-[#030712] p-6 rounded-[2rem] border border-white/5 space-y-4">
-                              <p className="text-gray-500 text-[8px] font-black uppercase tracking-widest">Available Download</p>
-                              <div className="flex items-center justify-center gap-3">
-                                  <FileText className="text-blue-500" />
-                                  <p className="text-white font-bold text-sm truncate">{fileData.title}</p>
-                              </div>
-                              <button 
-                                onClick={handleDownload}
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-[0.2em] py-4 rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95"
-                              >
-                                  <Download size={16} /> Download File
-                              </button>
-                          </div>
-                      )}
                       <button onClick={() => navigate('/tasks')} className="w-full bg-white/5 hover:bg-white/10 text-white py-5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all">
                           Return to Directory
                       </button>
                   </div>
               ) : (
                   <div className="space-y-4">
-                    {(!isTimerRunning && (timeLeft > 0 || isTelegramTask)) ? (
-                        <div className="space-y-4">
+                    {(!isTimerRunning && (timeLeft > 0 || isTelegramTask || task.type === TaskType.SHORTLINK)) ? (
+                        <div className="space-y-6">
                             <button 
                                 onClick={handleStartTask} 
-                                disabled={isVerifyingFake}
+                                disabled={isVerifyingManual}
                                 className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.8rem] shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
                             >
                                 {task.type === TaskType.SHORTLINK ? <ExternalLink size={18}/> : 
                                  isTelegramTask ? <Send size={18} /> : <PlayCircle size={18} />} 
-                                {isTelegramTask ? 'OPEN TELEGRAM' : (task.type === TaskType.SHORTLINK ? (hasOpenedLink ? 'RE-OPEN SHORTLINK' : 'OPEN SHORTLINK') : 'DEPLOY MISSION')}
+                                {isTelegramTask ? 'OPEN TELEGRAM' : (task.type === TaskType.SHORTLINK ? (hasOpenedLink ? 'RE-OPEN LINK' : 'OPEN SHORTLINK') : 'DEPLOY MISSION')}
                             </button>
                             
+                            {task.type === TaskType.SHORTLINK && hasOpenedLink && (
+                                <div className="space-y-5 p-6 bg-[#030712] rounded-[2.5rem] border border-white/5 shadow-2xl animate-in slide-in-from-bottom-2">
+                                    <div className="flex items-center gap-3">
+                                        <div className="bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 text-amber-500">
+                                            <Key size={18} />
+                                        </div>
+                                        <p className="text-left text-gray-500 text-[9px] font-black uppercase tracking-widest">Identify Downloaded File</p>
+                                    </div>
+                                    <input 
+                                        type="text"
+                                        placeholder="Enter full file name..."
+                                        className="w-full bg-[#0b1120] border border-white/10 text-white p-5 rounded-2xl focus:border-amber-500 outline-none transition-all placeholder:text-gray-700 text-sm font-bold shadow-inner"
+                                        value={verificationInput}
+                                        onChange={e => setVerificationInput(e.target.value)}
+                                    />
+                                    <button 
+                                        onClick={handleVerify}
+                                        disabled={isVerifyingManual}
+                                        className="w-full bg-amber-600 hover:bg-amber-700 disabled:bg-gray-800 text-white font-black text-[10px] uppercase tracking-[0.25em] py-5 rounded-[1.8rem] shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+                                    >
+                                        {isVerifyingManual ? <Loader2 className="animate-spin" size={16} /> : <ShieldAlert size={16} />}
+                                        {isVerifyingManual ? 'VERIFYING...' : 'VERIFY & CLAIM'}
+                                    </button>
+                                </div>
+                            )}
+
                             {(isTelegramTask && hasOpenedLink) && (
                                 <button 
                                     onClick={handleVerify} 
-                                    disabled={isVerifyingFake}
-                                    className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-800 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.8rem] shadow-xl transition-all active:scale-95 animate-in zoom-in flex items-center justify-center gap-2"
+                                    className="w-full bg-green-600 hover:bg-green-700 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.8rem] shadow-xl transition-all active:scale-95 animate-in zoom-in flex items-center justify-center gap-2"
                                 >
-                                    {isVerifyingFake ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
-                                    {isVerifyingFake ? 'CHECKING...' : 'VERIFY JOIN'}
+                                    <CheckCircle size={18} /> VERIFY JOIN
                                 </button>
-                            )}
-                            
-                            {task.type === TaskType.SHORTLINK && hasOpenedLink && (
-                                <div className="space-y-4 animate-in fade-in">
-                                    <div className="p-5 bg-[#030712] rounded-[1.8rem] border border-white/5 space-y-4">
-                                        <div className="flex items-center justify-center gap-3">
-                                            <div className="flex gap-1">
-                                                <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                                                <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                                                <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                                            </div>
-                                            <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Listening for rewards...</p>
-                                        </div>
-                                        <button 
-                                            onClick={() => checkCompletion(true)}
-                                            disabled={isManualChecking}
-                                            className="text-blue-500 text-[9px] font-black uppercase tracking-[0.3em] hover:text-blue-400 transition-colors w-full flex items-center justify-center gap-2"
-                                        >
-                                            {isManualChecking ? <Loader2 className="animate-spin" size={10} /> : <RefreshCw size={10} />}
-                                            Check Status Manually
-                                        </button>
-                                    </div>
-                                    <p className="text-gray-600 text-[8px] font-black uppercase tracking-widest px-4">
-                                        Note: Do not close this app until points are added. Confirmation typically takes 10-30 seconds after link completion.
-                                    </p>
-                                </div>
                             )}
                         </div>
                     ) : timeLeft > 0 ? (

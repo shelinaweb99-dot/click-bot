@@ -119,8 +119,8 @@ export const saveUser = async (user: User) => {
 
 export const getTasks = async (force = false): Promise<Task[]> => apiCall('getTasks', {}, force);
 
-export const verifyAndCompleteTask = async (userId: string, taskId: string) => {
-    const res = await apiCall('completeTask', { taskId }, true);
+export const verifyAndCompleteTask = async (userId: string, taskId: string, verificationAnswer?: string) => {
+    const res = await apiCall('completeTask', { taskId, verificationAnswer }, true);
     delete _cache[`getTasks_{}`];
     delete _cache[`getUser_{}`];
     window.dispatchEvent(new Event('db_change'));

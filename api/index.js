@@ -177,30 +177,17 @@ export default async function handler(req, res) {
     try {
         await connectToDatabase();
         
-        // --- IMPROVED POSTBACK HANDLER ---
         if (req.query.action === 'postback' || req.body.action === 'postback') {
             const uid = req.query.uid || req.body.uid || req.query.user_id || req.body.user_id || req.query.subid || req.body.subid;
             const tid = req.query.tid || req.body.tid || req.query.task_id || req.body.task_id;
 
-            if (!uid || !tid) {
-                console.warn("[POSTBACK_REJECTED] Missing UID or TID");
-                return res.status(400).send("0"); 
-            }
+            if (!uid || !tid) return res.status(400).send("0"); 
 
-            const [user, task] = await Promise.all([
-                User.findOne({ id: uid }), 
-                Task.findOne({ id: tid })
-            ]);
-
-            if (!user || !task) {
-                console.warn(`[POSTBACK_NOT_FOUND] User: ${!!user}, Task: ${!!task}`);
-                return res.status(404).send("0");
-            }
+            const [user, task] = await Promise.all([User.findOne({ id: uid }), Task.findOne({ id: tid })]);
+            if (!user || !task) return res.status(404).send("0");
             
             const existingTx = await Transaction.findOne({ userId: uid, taskId: tid });
-            if (existingTx) {
-                return res.status(200).send("1"); // Already done, return success to provider
-            }
+            if (existingTx) return res.status(200).send("1");
 
             user.balance += task.reward;
             await user.save();
@@ -211,8 +198,6 @@ export default async function handler(req, res) {
                 date: new Date().toISOString()
             });
             await Task.updateOne({ id: tid }, { $inc: { completedCount: 1 } });
-            
-            console.log(`[POSTBACK_SUCCESS] Reward applied to ${uid} for task ${tid}`);
             return res.status(200).send("1");
         }
 
@@ -282,10 +267,20 @@ export default async function handler(req, res) {
                 return res.json(doc?.data || {});
             }
             case 'completeTask': {
-                const { taskId } = data;
+                const { taskId, verificationAnswer } = data;
                 const task = await Task.findOne({ id: taskId }).lean();
                 if (!task) return res.status(404).json({ message: "Task unavailable." });
-                if (task.type === 'SHORTLINK') return res.status(400).json({ message: "Requires automatic postback." });
+
+                // NEW: MANUAL VERIFICATION FOR SHORTLINK
+                if (task.type === 'SHORTLINK') {
+                    if (!verificationAnswer) return res.status(400).json({ message: "Verification answer required." });
+                    const correctVal = (task.fileTitle || '').trim().toLowerCase();
+                    const inputVal = (verificationAnswer || '').trim().toLowerCase();
+                    
+                    if (correctVal !== inputVal) {
+                        return res.status(400).json({ message: "Verification failed: Information not found, please try again." });
+                    }
+                }
 
                 if (task.type === 'TELEGRAM_CHANNEL' || task.type === 'TELEGRAM_BOT' || task.type === 'TELEGRAM') {
                     if (!currentUser.telegramId) return res.status(400).json({ message: "Telegram account not detected." });

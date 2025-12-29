@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Task, TaskType, TaskStatus } from '../../types';
 import { getTasks, saveTask, deleteTask, subscribeToChanges } from '../../services/mockDb';
-import { Trash2, Edit, Plus, Video, Globe, FileText, Send, AlertCircle, Link as LinkIcon, Lock, Bot, Info, Copy } from 'lucide-react';
+import { Trash2, Edit, Plus, Video, Globe, FileText, Send, AlertCircle, Link as LinkIcon, Lock, Bot, Info, Copy, Key } from 'lucide-react';
 
 export const AdminTasks: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -129,12 +129,6 @@ export const AdminTasks: React.FC = () => {
     }
   };
 
-  // Generate dynamic URL based on current host
-  const getPostbackUrl = (taskId: string) => {
-      const baseUrl = window.location.origin;
-      return `${baseUrl}/api?action=postback&uid={uid}&tid=${taskId}`;
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -162,7 +156,7 @@ export const AdminTasks: React.FC = () => {
                           <option value={TaskType.WEBSITE}>Website Visit</option>
                           <option value={TaskType.TELEGRAM_CHANNEL}>Telegram Channel Join</option>
                           <option value={TaskType.TELEGRAM_BOT}>Telegram Bot Join</option>
-                          <option value={TaskType.SHORTLINK}>Shortlink + File</option>
+                          <option value={TaskType.SHORTLINK}>Shortlink + Code Verification</option>
                           <option value={TaskType.CUSTOM}>Custom Job</option>
                       </select>
                   </div>
@@ -185,43 +179,32 @@ export const AdminTasks: React.FC = () => {
                   {type === TaskType.SHORTLINK ? (
                       <div className="md:col-span-2 space-y-6 p-6 bg-blue-500/5 rounded-3xl border border-blue-500/10">
                           <div className="flex items-center gap-2 text-blue-400 font-black text-[10px] uppercase tracking-widest">
-                              <Lock size={14} /> Postback & Secure File Configuration
+                              <Lock size={14} /> Manual Verification Setup
                           </div>
                           
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-4">
                               <div>
-                                  <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">File Display Name</label>
-                                  <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={fileTitle} onChange={e => setFileTitle(e.target.value)} placeholder="SecretFile.zip" />
-                              </div>
-                              <div>
-                                  <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Protected Download URL</label>
-                                  <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={fileUrl} onChange={e => setFileUrl(e.target.value)} placeholder="https://drive.google.com/..." />
-                              </div>
-                          </div>
-
-                          <div className="space-y-2">
-                               <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Your Shortlink (The Mission)</label>
-                               <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://gplinks.co/..." />
-                               <p className="text-[9px] text-gray-600 italic">* When user clicks this link, we append ?uid=... and ?tid=... automatically.</p>
-                          </div>
-
-                          {currentId && (
-                              <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
-                                  <label className="text-gray-500 text-[9px] font-black uppercase tracking-widest">Global Postback URL Template</label>
-                                  <div className="flex items-center gap-2 mt-2">
-                                      <code className="bg-[#030712] p-3 rounded-lg text-blue-400 font-mono text-[10px] flex-1 break-all select-all">
-                                          {getPostbackUrl(currentId)}
-                                      </code>
-                                      <button type="button" onClick={() => { navigator.clipboard.writeText(getPostbackUrl(currentId)); alert("Copied!"); }} className="p-3 bg-white/5 rounded-xl hover:text-white transition-colors">
-                                          <Copy size={16} />
-                                      </button>
+                                  <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Secret Answer (File Name or Code)</label>
+                                  <div className="relative">
+                                      <input 
+                                        className="w-full bg-[#0b1120] border border-white/5 text-white p-4 pl-12 rounded-2xl mt-1 focus:border-amber-500 transition-all font-bold" 
+                                        required
+                                        value={fileTitle} 
+                                        onChange={e => setFileTitle(e.target.value)} 
+                                        placeholder="e.g. SecretFile.zip or X99-B02" 
+                                      />
+                                      <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-700" size={18} />
                                   </div>
-                                  <p className="text-[9px] text-gray-600 mt-2 leading-relaxed">
-                                      * Go to your Shortlink provider's settings and paste this as your Postback/Webhook URL. 
-                                      Replace <strong className="text-blue-500">{`{uid}`}</strong> with your network's UserID macro (e.g. {`[subid]`} or {`{subid}`}).
+                                  <p className="text-[9px] text-gray-600 mt-2 italic px-1 leading-relaxed">
+                                      * The user must type this EXACT string in the app after downloading to get their reward.
                                   </p>
                               </div>
-                          )}
+                              
+                              <div className="space-y-2">
+                                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Shortlink URL</label>
+                                <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" required value={url} onChange={e => setUrl(e.target.value)} placeholder="https://gplinks.co/..." />
+                              </div>
+                          </div>
                       </div>
                   ) : (
                       <div className="md:col-span-2">
