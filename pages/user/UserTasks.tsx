@@ -3,7 +3,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Task, TaskType, TaskStatus } from '../../types';
 import { getTasks, getCurrentUserId, getTransactions, subscribeToChanges } from '../../services/mockDb';
-// Fixed: Added CheckCircle to imports
 import { Youtube, Globe, Edit, PlayCircle, RefreshCw, Send, Clock, Lock, FileDown, CheckCircle } from 'lucide-react';
 
 export const UserTasks: React.FC = () => {
@@ -25,17 +24,23 @@ export const UserTasks: React.FC = () => {
         const userTransactions = await getTransactions(userId);
         if (!isMounted.current) return;
 
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).getTime();
         const completionMap = new Map<string, boolean>();
+        
         userTransactions.forEach(tx => {
             if (tx.taskId && tx.type === 'EARNING') {
-                completionMap.set(tx.taskId, true);
+                const txDate = new Date(tx.date).getTime();
+                // Only mark as completed if it was done within the last 24 hours
+                // (Though backend should filter Website/YouTube tasks, this is safe for others)
+                if (txDate > yesterday) {
+                    completionMap.set(tx.taskId, true);
+                }
             }
         });
 
         const allTasks = await getTasks();
         if (!isMounted.current) return;
         
-        // Split tasks into active (not done) and available files (done)
         const filteredTasks = allTasks.filter(t => t.status === TaskStatus.ACTIVE);
         
         if (isMounted.current) {

@@ -27,7 +27,14 @@ export const TaskRunner: React.FC = () => {
       if (!userId) return;
       
       const txs = await getTransactions(userId, true);
-      const done = txs.some(tx => tx.taskId === taskId && tx.type === 'EARNING');
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).getTime();
+      
+      const done = txs.some(tx => {
+          if (tx.taskId !== taskId || tx.type !== 'EARNING') return false;
+          // For recurring tasks, check if done in last 24h
+          const txDate = new Date(tx.date).getTime();
+          return txDate > yesterday;
+      });
       
       if (done && isMounted.current) {
           setIsCompleted(true);

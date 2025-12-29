@@ -149,6 +149,8 @@ export default async function handler(req, res) {
             if (!uid || !tid) return res.status(400).json({ message: "Invalid postback parameters." });
             const [user, task] = await Promise.all([User.findOne({ id: uid }), Task.findOne({ id: tid })]);
             if (!user || !task) return res.status(404).json({ message: "Verification target not found." });
+            
+            // Check for any previous completion for postbacks
             const existingTx = await Transaction.findOne({ userId: uid, taskId: tid });
             if (existingTx) return res.json({ success: true, message: "Already credited." });
 
@@ -198,8 +200,30 @@ export default async function handler(req, res) {
 
         switch (action) {
             case 'getUser': return res.json(currentUser);
-            case 'getTasks': return res.json(await Task.find({ status: 'ACTIVE' }).lean());
-            case 'getTransactions': return res.json(await Transaction.find({ userId: currentUser.id }).sort({ date: -1 }).limit(20).lean());
+            case 'getTasks': {
+                const tasks = await Task.find({ status: 'ACTIVE' }).lean();
+                if (currentUser.role === 'ADMIN') return res.json(tasks);
+
+                const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                const recentTx = await Transaction.find({ 
+                    userId: currentUser.id, 
+                    type: 'EARNING',
+                    date: { $gte: yesterday }
+                }).select('taskId').lean();
+
+                const recentTaskIds = new Set(recentTx.map(tx => tx.taskId));
+                
+                // Filter: Website and YouTube tasks vanish for 24h after completion
+                const visibleTasks = tasks.filter(t => {
+                    if ((t.type === 'WEBSITE' || t.type === 'YOUTUBE') && recentTaskIds.has(t.id)) {
+                        return false;
+                    }
+                    return true;
+                });
+
+                return res.json(visibleTasks);
+            }
+            case 'getTransactions': return res.json(await Transaction.find({ userId: currentUser.id }).sort({ date: -1 }).limit(100).lean());
             
             case 'getProtectedFile': {
                 const { taskId } = data;
@@ -378,6 +402,18 @@ export default async function handler(req, res) {
                 const task = await Task.findOne({ id: taskId }).lean();
                 if (!task) return res.status(404).json({ message: "Task unavailable." });
                 if (task.type === 'SHORTLINK') return res.status(400).json({ message: "Requires postback." });
+
+                // Check 24h cooldown for website/youtube
+                if (task.type === 'WEBSITE' || task.type === 'YOUTUBE') {
+                    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                    const existing = await Transaction.findOne({
+                        userId: currentUser.id,
+                        taskId: task.id,
+                        type: 'EARNING',
+                        date: { $gte: yesterday }
+                    });
+                    if (existing) return res.status(400).json({ message: "Task is on cooldown. Try again in 24 hours." });
+                }
 
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: task.reward } });
                 await Transaction.create({
