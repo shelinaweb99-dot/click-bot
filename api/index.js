@@ -124,12 +124,38 @@ const Transaction = mongoose.models.Transaction || mongoose.model('Transaction',
 const Setting = mongoose.models.Setting || mongoose.model('Setting', SettingSchema);
 const Withdrawal = mongoose.models.Withdrawal || mongoose.model('Withdrawal', WithdrawalSchema);
 
+/**
+ * Extracts telegram user ID from the initData string
+ */
+function getTelegramIdFromHeader(initData) {
+    if (!initData) return null;
+    try {
+        const searchParams = new URLSearchParams(initData);
+        const userJson = searchParams.get('user');
+        if (!userJson) return null;
+        const user = JSON.parse(userJson);
+        return user.id;
+    } catch (e) { return null; }
+}
+
 async function authenticateUser(req) {
     const authHeader = req.headers.authorization;
+    const tgInitData = req.headers['x-telegram-init-data'];
+    
     if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
     const token = authHeader.split(' ')[1];
+    
     try {
-        return await User.findOne({ sessionToken: token, tokenExpires: { $gt: new Date() } });
+        const user = await User.findOne({ sessionToken: token, tokenExpires: { $gt: new Date() } });
+        if (user && tgInitData) {
+            const currentTgId = getTelegramIdFromHeader(tgInitData);
+            // Auto-link Telegram ID if missing
+            if (currentTgId && !user.telegramId) {
+                user.telegramId = currentTgId;
+                await user.save();
+            }
+        }
+        return user;
     } catch (e) { return null; }
 }
 
@@ -137,23 +163,22 @@ async function authenticateUser(req) {
  * Real-time membership check via Telegram Bot API
  */
 async function checkTelegramMembership(token, channel, telegramUserId) {
-    if (!token || !channel || !telegramUserId) return false;
+    if (!token || !channel || !telegramUserId) return { ok: false, error: 'Missing parameters' };
     try {
-        const chatId = channel.startsWith('@') ? channel : `@${channel}`;
+        // Support for @username or -100 ID
+        const chatId = (channel.startsWith('@') || channel.startsWith('-')) ? channel : `@${channel}`;
         const response = await fetch(`https://api.telegram.org/bot${token}/getChatMember?chat_id=${chatId}&user_id=${telegramUserId}`);
         const data = await response.json();
         
         if (!data.ok) {
-            console.error('[TG_VERIFY_ERROR]', data.description);
-            return false;
+            return { ok: false, error: data.description };
         }
 
         const status = data.result.status;
-        // Valid membership statuses
-        return ['member', 'administrator', 'creator'].includes(status);
+        const isMember = ['member', 'administrator', 'creator'].includes(status);
+        return { ok: isMember, status };
     } catch (e) {
-        console.error('[TG_API_FETCH_FAILED]', e);
-        return false;
+        return { ok: false, error: 'API Fetch failed' };
     }
 }
 
@@ -215,7 +240,6 @@ export default async function handler(req, res) {
             } else {
                 if (!(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: "Invalid." });
                 user.sessionToken = newToken; user.tokenExpires = expires;
-                // Update telegram ID if provided on login
                 if (userData.telegramId) user.telegramId = userData.telegramId;
                 await user.save();
             }
@@ -239,15 +263,11 @@ export default async function handler(req, res) {
                 }).select('taskId').lean();
 
                 const recentTaskIds = new Set(recentTx.map(tx => tx.taskId));
-                
                 const visibleTasks = tasks.filter(t => {
                     const earningTypes = ['WEBSITE', 'YOUTUBE', 'TELEGRAM', 'TELEGRAM_CHANNEL', 'TELEGRAM_BOT'];
-                    if (earningTypes.includes(t.type) && recentTaskIds.has(t.id)) {
-                        return false;
-                    }
+                    if (earningTypes.includes(t.type) && recentTaskIds.has(t.id)) return false;
                     return true;
                 });
-
                 return res.json(visibleTasks);
             }
             case 'getTransactions': return res.json(await Transaction.find({ userId: currentUser.id }).sort({ date: -1 }).limit(100).lean());
@@ -267,24 +287,30 @@ export default async function handler(req, res) {
                 const { taskId } = data;
                 const task = await Task.findOne({ id: taskId }).lean();
                 if (!task) return res.status(404).json({ message: "Task unavailable." });
-                
                 if (task.type === 'SHORTLINK') return res.status(400).json({ message: "Requires automatic postback." });
 
                 // --- TELEGRAM MEMBERSHIP VERIFICATION ---
                 if (task.type === 'TELEGRAM_CHANNEL' || task.type === 'TELEGRAM_BOT' || task.type === 'TELEGRAM') {
                     if (!currentUser.telegramId) {
-                        return res.status(400).json({ message: "Telegram account not linked. Please open the app from Telegram." });
+                        return res.status(400).json({ message: "Telegram account not detected. Ensure you are using the app inside Telegram." });
                     }
                     
                     const sysSettings = await Setting.findById('system').lean();
                     const botToken = sysSettings?.data?.telegramBotToken;
                     
                     if (!botToken) {
-                        console.warn('[CONFIG_ERROR] Telegram Bot Token missing in System Settings.');
-                    } else if (task.channelUsername) {
-                        const isMember = await checkTelegramMembership(botToken, task.channelUsername, currentUser.telegramId);
-                        if (!isMember) {
-                            return res.status(400).json({ message: "Verification failed: You have not joined the channel yet. Please join and return." });
+                        return res.status(500).json({ message: "Verification system misconfigured: Bot token missing." });
+                    } 
+                    
+                    if (task.channelUsername) {
+                        const result = await checkTelegramMembership(botToken, task.channelUsername, currentUser.telegramId);
+                        
+                        if (!result.ok) {
+                            // Detailed developer-friendly error if chat not found or bot not admin
+                            if (result.error && result.error.includes('chat not found')) {
+                                return res.status(400).json({ message: "Verification Failed: Bot must be an Administrator in the target channel." });
+                            }
+                            return res.status(400).json({ message: "Verification failed: Join the channel first and then click Verify." });
                         }
                     }
                 }
@@ -297,7 +323,7 @@ export default async function handler(req, res) {
                     type: 'EARNING',
                     date: { $gte: yesterday }
                 });
-                if (existing) return res.status(400).json({ message: "Task is on cooldown. Try again tomorrow." });
+                if (existing) return res.status(400).json({ message: "Mission recently completed. Try again tomorrow." });
 
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: task.reward } });
                 await Transaction.create({

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Task, TaskType, TaskStatus } from '../../types';
 import { getTasks, saveTask, deleteTask, subscribeToChanges } from '../../services/mockDb';
-import { Trash2, Edit, Plus, Video, Globe, FileText, Send, AlertCircle, Link as LinkIcon, Lock, Bot } from 'lucide-react';
+import { Trash2, Edit, Plus, Video, Globe, FileText, Send, AlertCircle, Link as LinkIcon, Lock, Bot, Info } from 'lucide-react';
 
 export const AdminTasks: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -168,6 +168,18 @@ export const AdminTasks: React.FC = () => {
                       <input type="number" className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1 focus:border-blue-500 outline-none" required value={reward} onChange={e => setReward(Number(e.target.value))} />
                   </div>
 
+                  {(type === TaskType.TELEGRAM_CHANNEL || type === TaskType.TELEGRAM_BOT) && (
+                      <div className="md:col-span-2 bg-blue-500/5 border border-blue-500/10 p-4 rounded-2xl flex gap-3 items-start animate-in zoom-in">
+                          <Info size={18} className="text-blue-500 shrink-0 mt-0.5" />
+                          <div className="text-[10px] text-gray-400 space-y-1">
+                              <p className="font-black text-blue-500 uppercase tracking-widest">Bot Setup Required</p>
+                              <p>1. Add your bot to the target channel as an <strong className="text-white">Administrator</strong>.</p>
+                              <p>2. Ensure the bot has "Invite Users via Link" or "Add Members" permissions enabled.</p>
+                              <p>3. Use the public handle (e.g. <code className="text-blue-400">@mychannel</code>) below.</p>
+                          </div>
+                      </div>
+                  )}
+
                   {type === TaskType.SHORTLINK ? (
                       <div className="md:col-span-2 space-y-6 p-6 bg-blue-500/5 rounded-3xl border border-blue-500/10">
                           <div className="flex items-center gap-2 text-blue-400 font-black text-[10px] uppercase tracking-widest">
@@ -176,24 +188,16 @@ export const AdminTasks: React.FC = () => {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div>
                                   <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">File Display Name</label>
-                                  <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={fileTitle} onChange={e => setFileTitle(e.target.value)} placeholder="e.g. MySecretFile.zip" />
+                                  <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={fileTitle} onChange={setFileTitle} />
                               </div>
                               <div>
                                   <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Protected Download URL</label>
-                                  <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={fileUrl} onChange={e => setFileUrl(e.target.value)} placeholder="https://drive.google.com/..." />
+                                  <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={fileUrl} onChange={setFileUrl} />
                               </div>
                           </div>
                           <div className="space-y-2">
                                <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Shortlink URL</label>
-                               <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={url} onChange={e => setUrl(e.target.value)} placeholder="https://gplinks.co/..." />
-                          </div>
-                          <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
-                              <label className="text-gray-500 text-[9px] font-black uppercase tracking-widest">Global Postback URL (For Provider)</label>
-                              <div className="flex items-center gap-2 mt-2">
-                                  <code className="bg-[#030712] p-3 rounded-lg text-blue-400 font-mono text-[10px] flex-1 break-all">{postbackUrl}</code>
-                                  <button type="button" onClick={() => navigator.clipboard.writeText(postbackUrl)} className="p-3 bg-white/5 rounded-xl hover:text-white transition-colors"><LinkIcon size={16} /></button>
-                              </div>
-                              <p className="text-[9px] text-gray-600 mt-2 italic">* Provide this exact URL to your shortlink network's postback settings.</p>
+                               <input className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1" value={url} onChange={setUrl} />
                           </div>
                       </div>
                   ) : (
@@ -237,9 +241,6 @@ export const AdminTasks: React.FC = () => {
                               <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">{task.reward} Pts</span>
                               <span className="text-gray-700 text-[10px]">•</span>
                               <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{task.completedCount}/{task.totalLimit} Done</span>
-                              {task.type === TaskType.SHORTLINK && (
-                                  <span className="text-[8px] bg-blue-600/10 text-blue-400 px-2 py-0.5 rounded-md font-black uppercase tracking-widest border border-blue-500/10">Secure File</span>
-                              )}
                           </div>
                       </div>
                   </div>
