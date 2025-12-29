@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Task, TaskType, AdSettings } from '../../types';
 import { getTasks, verifyAndCompleteTask, getCurrentUserId, getAdSettings, getTransactions, getProtectedFile } from '../../services/mockDb';
-import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, Timer, ShieldAlert, X, Info, Lock, Download, ExternalLink, Zap, FileText, Minimize2, ExternalLink as OpenIcon, Bot, AlertTriangle, Activity } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Send, Loader2, PlayCircle, Globe, Timer, ShieldAlert, X, Info, Lock, Download, ExternalLink, Zap, FileText, Minimize2, ExternalLink as OpenIcon, Bot, AlertTriangle, Activity, RefreshCw } from 'lucide-react';
 import { AdSimulator } from '../../components/AdSimulator';
 import { NativeBannerModal } from '../../components/NativeBannerModal';
 
@@ -22,30 +22,39 @@ export const TaskRunner: React.FC = () => {
   const [adSettings, setAdSettings] = useState<AdSettings | null>(null);
   const [showViewer, setShowViewer] = useState(false);
   const [fileData, setFileData] = useState<{url: string, title: string} | null>(null);
+  const [isManualChecking, setIsManualChecking] = useState(false);
   const isMounted = useRef(true);
 
-  const checkCompletion = async () => {
+  const checkCompletion = async (isManual = false) => {
       if (!taskId || !isMounted.current) return;
       const userId = getCurrentUserId();
       if (!userId) return;
       
-      const txs = await getTransactions(userId, true);
-      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).getTime();
+      if (isManual) setIsManualChecking(true);
       
-      const done = txs.some(tx => {
-          if (tx.taskId !== taskId || tx.type !== 'EARNING') return false;
-          const txDate = new Date(tx.date).getTime();
-          return txDate > yesterday;
-      });
-      
-      if (done && isMounted.current) {
-          setIsCompleted(true);
-          if (task?.type === TaskType.SHORTLINK) {
-              const fileRes = await getProtectedFile(taskId);
-              if (fileRes.success && isMounted.current) {
-                  setFileData(fileRes);
+      try {
+          const txs = await getTransactions(userId, true); // Force refresh from server
+          const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).getTime();
+          
+          const done = txs.some(tx => {
+              if (tx.taskId !== taskId || tx.type !== 'EARNING') return false;
+              const txDate = new Date(tx.date).getTime();
+              return txDate > yesterday;
+          });
+          
+          if (done && isMounted.current) {
+              setIsCompleted(true);
+              if (task?.type === TaskType.SHORTLINK) {
+                  const fileRes = await getProtectedFile(taskId);
+                  if (fileRes.success && isMounted.current) {
+                      setFileData(fileRes);
+                  }
               }
           }
+      } catch (e) {
+          console.error("Check status failed", e);
+      } finally {
+          if (isMounted.current) setIsManualChecking(false);
       }
   };
 
@@ -70,9 +79,9 @@ export const TaskRunner: React.FC = () => {
     // Intensive status monitoring for shortlinks
     const interval = setInterval(() => {
         if (!isCompleted && task?.type === TaskType.SHORTLINK && hasOpenedLink) {
-            checkCompletion();
+            checkCompletion(false);
         }
-    }, 4000);
+    }, 5000);
 
     return () => {
         isMounted.current = false;
@@ -103,7 +112,7 @@ export const TaskRunner: React.FC = () => {
             targetUrl = `https://t.me/${handle}`;
         }
 
-        // ROBUST SHORTLINK CONSTRUCTION
+        // CONSTRUCT DYNAMIC SHORTLINK URL
         const linkWithParams = task.type === TaskType.SHORTLINK 
             ? `${targetUrl}${targetUrl.includes('?') ? '&' : '?'}uid=${getCurrentUserId()}&tid=${task.id}` 
             : targetUrl;
@@ -243,7 +252,7 @@ export const TaskRunner: React.FC = () => {
                 <p className="text-gray-500 text-[10px] font-black uppercase tracking-widest leading-relaxed">
                     {isCompleted ? 'Asset decrypted and rewards applied.' : 
                      task.type === TaskType.SHORTLINK 
-                        ? (hasOpenedLink ? 'App is waiting for provider confirmation. Do not close this window.' : 'Follow the link and solve the challenge to unlock your reward.') 
+                        ? (hasOpenedLink ? 'Waiting for shortlink confirmation. If you already completed it, wait a few seconds or click Manual Check.' : 'Follow the link and solve the challenge to unlock your reward.') 
                         : isTelegramTask 
                         ? `Click the button below to join the target Telegram resource and then verify.`
                         : `Complete the ${task.durationSeconds}s requirement to verify.`}
@@ -287,15 +296,12 @@ export const TaskRunner: React.FC = () => {
                         <div className="space-y-4">
                             <button 
                                 onClick={handleStartTask} 
-                                disabled={isVerifyingFake || (task.type === TaskType.SHORTLINK && hasOpenedLink)}
-                                className={`w-full font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.8rem] shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2 
-                                ${task.type === TaskType.SHORTLINK && hasOpenedLink 
-                                    ? 'bg-gray-800 text-gray-500 cursor-not-allowed' 
-                                    : 'bg-blue-600 hover:bg-blue-700 text-white'}`}
+                                disabled={isVerifyingFake}
+                                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 text-white font-black text-xs uppercase tracking-[0.2em] py-5 rounded-[1.8rem] shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
                             >
                                 {task.type === TaskType.SHORTLINK ? <ExternalLink size={18}/> : 
                                  isTelegramTask ? <Send size={18} /> : <PlayCircle size={18} />} 
-                                {isTelegramTask ? 'OPEN TELEGRAM' : (task.type === TaskType.SHORTLINK ? 'OPEN SHORTLINK' : 'DEPLOY MISSION')}
+                                {isTelegramTask ? 'OPEN TELEGRAM' : (task.type === TaskType.SHORTLINK ? (hasOpenedLink ? 'RE-OPEN SHORTLINK' : 'OPEN SHORTLINK') : 'DEPLOY MISSION')}
                             </button>
                             
                             {(isTelegramTask && hasOpenedLink) && (
@@ -321,14 +327,16 @@ export const TaskRunner: React.FC = () => {
                                             <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Listening for rewards...</p>
                                         </div>
                                         <button 
-                                            onClick={checkCompletion}
-                                            className="text-blue-500 text-[9px] font-black uppercase tracking-[0.3em] hover:text-blue-400 transition-colors w-full"
+                                            onClick={() => checkCompletion(true)}
+                                            disabled={isManualChecking}
+                                            className="text-blue-500 text-[9px] font-black uppercase tracking-[0.3em] hover:text-blue-400 transition-colors w-full flex items-center justify-center gap-2"
                                         >
+                                            {isManualChecking ? <Loader2 className="animate-spin" size={10} /> : <RefreshCw size={10} />}
                                             Check Status Manually
                                         </button>
                                     </div>
                                     <p className="text-gray-600 text-[8px] font-black uppercase tracking-widest px-4">
-                                        Note: Do not close this app until points are added. Confirmation typically takes 10-30 seconds.
+                                        Note: Do not close this app until points are added. Confirmation typically takes 10-30 seconds after link completion.
                                     </p>
                                 </div>
                             )}
