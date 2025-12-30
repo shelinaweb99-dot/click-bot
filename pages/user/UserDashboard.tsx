@@ -49,14 +49,6 @@ export const UserDashboard: React.FC = () => {
     };
   }, []);
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour >= 5 && hour < 12) return { text: "Good morning", emoji: "☀️" };
-    if (hour >= 12 && hour < 18) return { text: "Good afternoon", emoji: "🌤️" };
-    if (hour >= 18 && hour < 22) return { text: "Good evening", emoji: "🌙" };
-    return { text: "Good night", emoji: "🌌" };
-  };
-
   const handleDailyCheckIn = async () => {
     if (!user || isClaiming) return;
     setIsClaiming(true);
@@ -84,20 +76,10 @@ export const UserDashboard: React.FC = () => {
     </div>
   );
 
-  const greeting = getGreeting();
-
   return (
     <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-300 pb-10 max-w-full overflow-x-hidden">
       
       <button onClick={() => triggerHoneypot()} className="opacity-0 absolute pointer-events-auto h-0 w-0 overflow-hidden" aria-hidden="true" tabIndex={-1}>Admin Debug</button>
-
-      {/* Dynamic Time-based Greeting */}
-      <div className="px-1 flex flex-col gap-0.5">
-          <p className="text-[10px] font-black text-blue-500 uppercase tracking-[0.3em] ml-0.5">System Protocol</p>
-          <h1 className="text-2xl font-black text-white uppercase tracking-tight">
-              {greeting.text}, {user?.name.split(' ')[0] || 'Member'}! {greeting.emoji}
-          </h1>
-      </div>
 
       <div className="mesh-gradient rounded-[1.8rem] sm:rounded-[2.5rem] p-5 sm:p-8 shadow-[0_20px_40px_rgba(37,99,235,0.25)] text-white relative overflow-hidden group">
         <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity pointer-events-none">
