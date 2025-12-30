@@ -13,7 +13,7 @@ async function connectToDatabase() {
     
     const uri = process.env.MONGODB_URI;
     if (!uri) {
-        throw new Error("MONGODB_URI environment variable is not defined");
+        throw new Error("MONGODB_URI is not defined in the environment. Please check your Vercel/Project settings.");
     }
 
     try {
@@ -28,8 +28,8 @@ async function connectToDatabase() {
         cachedDb = conn.connection;
         return cachedDb;
     } catch (e) {
-        console.error("MongoDB Connection Error:", e);
-        throw e;
+        console.error("MongoDB Connection Failure:", e);
+        throw new Error("Unable to connect to the database infrastructure.");
     }
 }
 
@@ -501,6 +501,6 @@ export default async function handler(req, res) {
         }
     } catch (e) {
         console.error(e);
-        return res.status(500).json({ message: "Internal Server Error" });
+        return res.status(500).json({ message: e.message || "Internal Server Error" });
     }
 }

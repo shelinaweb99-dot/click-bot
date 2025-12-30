@@ -62,11 +62,19 @@ const apiCall = async (action: string, data: any = {}, forceRefresh = false) => 
             });
             clearTimeout(timeoutId);
             
-            const json = await res.json();
+            // Check if response is JSON
+            const contentType = res.headers.get("content-type");
+            let json: any = {};
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                json = await res.json();
+            } else {
+                const text = await res.text();
+                throw new Error(text || `Server Error ${res.status}`);
+            }
+
             if (!res.ok) {
                 if (res.status === 401) { 
                     clearAuth(); 
-                    // No more hash redirection here. Let the components handle it.
                 }
                 throw new Error(json.message || `Server Error ${res.status}`);
             }
@@ -88,8 +96,9 @@ const apiCall = async (action: string, data: any = {}, forceRefresh = false) => 
 export const initMockData = () => {
     const token = getAuthToken();
     if (token) {
-        getUserById(getUserId() || '');
-        getTasks();
+        // Pre-fetch non-critical data
+        getUserById(getUserId() || '').catch(() => {});
+        getTasks().catch(() => {});
     }
 };
 
