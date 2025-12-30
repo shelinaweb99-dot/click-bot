@@ -498,6 +498,18 @@ export default async function handler(req, res) {
 
                 return res.json({ success: true, message: "Referral Applied Successfully!" });
             }
+            case 'changePassword': {
+                const { oldPassword, newPassword } = data;
+                const user = await User.findOne({ id: currentUser.id }).select('+password');
+                if (!user) return res.status(404).json({ message: "User profile not found." });
+                
+                const isMatch = await bcrypt.compare(oldPassword, user.password);
+                if (!isMatch) return res.status(400).json({ message: "Access Denied: Incorrect current secret key." });
+                
+                user.password = await bcrypt.hash(newPassword, 10);
+                await user.save();
+                return res.json({ success: true, message: "Credential Node Updated Successfully." });
+            }
             case 'saveTask': {
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
                 await Task.findOneAndUpdate({ id: data.payload.id }, data.payload, { upsert: true });

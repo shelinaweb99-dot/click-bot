@@ -124,6 +124,10 @@ export const registerUser = async (email: string, password: string, userData: Pa
     return response;
 };
 
+export const changePassword = async (oldPassword: string, newPassword: string) => {
+    return apiCall('changePassword', { oldPassword, newPassword }, true);
+};
+
 export const logout = async () => { clearAuth(); };
 export const getCurrentUserId = () => getUserId();
 export const getUserRole = () => localStorage.getItem('app_user_role') as UserRole;
