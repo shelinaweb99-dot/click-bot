@@ -13,7 +13,7 @@ async function connectToDatabase() {
     
     const uri = process.env.MONGODB_URI;
     if (!uri) {
-        throw new Error("MONGODB_URI is not defined in the environment. Please check your Vercel/Project settings.");
+        throw new Error("MONGODB_URI environment variable is not defined");
     }
 
     try {
@@ -28,8 +28,8 @@ async function connectToDatabase() {
         cachedDb = conn.connection;
         return cachedDb;
     } catch (e) {
-        console.error("MongoDB Connection Failure:", e);
-        throw new Error("Unable to connect to the database infrastructure.");
+        console.error("MongoDB Connection Error:", e);
+        throw e;
     }
 }
 
@@ -187,6 +187,9 @@ export default async function handler(req, res) {
             const [user, task] = await Promise.all([User.findOne({ id: uid }), Task.findOne({ id: tid })]);
             if (!user || !task) return res.status(404).send("0");
             
+            // Check Capacity
+            if (task.completedCount >= (task.totalLimit || Infinity)) return res.status(400).send("0");
+
             const existingTx = await Transaction.findOne({ userId: uid, taskId: tid });
             if (existingTx) return res.status(200).send("1");
 
@@ -237,7 +240,6 @@ export default async function handler(req, res) {
                 await user.save();
             }
             
-            // Explicitly return the role and ID for frontend storage
             const userObj = user.toObject(); 
             delete userObj.password;
             return res.json({ 
@@ -273,6 +275,9 @@ export default async function handler(req, res) {
                 );
 
                 const visibleTasks = tasks.filter(t => {
+                    // Filter based on global capacity
+                    if (t.completedCount >= (t.totalLimit || 1000000)) return false;
+
                     if (t.type === 'SHORTLINK' || t.type === 'TELEGRAM_CHANNEL') {
                         if (completedAllTime.has(t.id)) return false;
                     }
@@ -301,6 +306,11 @@ export default async function handler(req, res) {
                 const { taskId, verificationAnswer } = data;
                 const task = await Task.findOne({ id: taskId }).lean();
                 if (!task) return res.status(404).json({ message: "Task unavailable." });
+
+                // Check global limit
+                if (task.completedCount >= (task.totalLimit || 1000000)) {
+                    return res.status(400).json({ message: "Task is no longer available (Limit reached)." });
+                }
 
                 if (task.type === 'SHORTLINK') {
                     if (!verificationAnswer) return res.status(400).json({ message: "Verification answer required." });

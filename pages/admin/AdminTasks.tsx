@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Task, TaskType, TaskStatus } from '../../types';
 import { getTasks, saveTask, deleteTask, subscribeToChanges } from '../../services/mockDb';
-import { Trash2, Edit, Plus, Video, Globe, FileText, Send, AlertCircle, Link as LinkIcon, Lock, Bot, Info, Copy, Key } from 'lucide-react';
+import { Trash2, Edit, Plus, Video, Globe, FileText, Send, AlertCircle, Link as LinkIcon, Lock, Bot, Info, Copy, Key, Timer, Users } from 'lucide-react';
 
 export const AdminTasks: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -116,8 +116,8 @@ export const AdminTasks: React.FC = () => {
     setReward(task.reward);
     setUrl(task.url || '');
     setChannelUsername(task.channelUsername || '');
-    setDuration(task.durationSeconds);
-    setLimit(task.totalLimit);
+    setDuration(task.durationSeconds || 30);
+    setLimit(task.totalLimit || 100);
     setInstructions(task.instructions || '');
     setFileUrl(task.fileUrl || '');
     setFileTitle(task.fileTitle || '');
@@ -164,6 +164,38 @@ export const AdminTasks: React.FC = () => {
                       <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1">Reward (Pts)</label>
                       <input type="number" className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1 focus:border-blue-500 outline-none" required value={reward} onChange={e => setReward(Number(e.target.value))} />
                   </div>
+
+                  {/* GLOBAL CAPACITY SETTING */}
+                  <div>
+                      <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1 flex items-center gap-1">
+                        <Users size={10} /> Total Completion Limit (Capacity)
+                      </label>
+                      <input 
+                        type="number" 
+                        className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1 focus:border-blue-500 outline-none" 
+                        required 
+                        value={limit} 
+                        onChange={e => setLimit(Number(e.target.value))} 
+                        placeholder="e.g. 500"
+                      />
+                  </div>
+
+                  {/* DURATION SETTING - Only for time-based tasks */}
+                  {(type === TaskType.WEBSITE || type === TaskType.YOUTUBE) && (
+                      <div className="animate-in slide-in-from-left-2">
+                          <label className="text-gray-500 text-[10px] font-black uppercase tracking-widest ml-1 flex items-center gap-1">
+                            <Timer size={10} /> {type === TaskType.WEBSITE ? 'Visit' : 'Watch'} Duration (Seconds)
+                          </label>
+                          <input 
+                            type="number" 
+                            className="w-full bg-[#0b1120] border border-white/5 text-white p-4 rounded-2xl mt-1 focus:border-blue-500 outline-none" 
+                            required 
+                            value={duration} 
+                            onChange={e => setDuration(Number(e.target.value))} 
+                            placeholder="e.g. 30"
+                          />
+                      </div>
+                  )}
 
                   {(type === TaskType.TELEGRAM_CHANNEL || type === TaskType.TELEGRAM_BOT) && (
                       <div className="md:col-span-2 bg-blue-500/5 border border-blue-500/10 p-4 rounded-2xl flex gap-3 items-start animate-in zoom-in">
@@ -247,6 +279,12 @@ export const AdminTasks: React.FC = () => {
                               <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">{task.reward} Pts</span>
                               <span className="text-gray-700 text-[10px]">•</span>
                               <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{task.completedCount}/{task.totalLimit} Done</span>
+                              {(task.type === TaskType.WEBSITE || task.type === TaskType.YOUTUBE) && (
+                                <>
+                                  <span className="text-gray-700 text-[10px]">•</span>
+                                  <span className="text-[9px] font-black text-amber-500 uppercase tracking-widest">{task.durationSeconds}s Timer</span>
+                                </>
+                              )}
                           </div>
                       </div>
                   </div>
