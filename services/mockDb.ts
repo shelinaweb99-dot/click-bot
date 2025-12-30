@@ -18,6 +18,10 @@ const setCache = (key: string, data: any) => {
     _cache[key] = { data, timestamp: Date.now() };
 };
 
+const clearCache = () => {
+    Object.keys(_cache).forEach(k => delete _cache[k]);
+};
+
 const getAuthToken = () => localStorage.getItem('session_token'); 
 const setAuthToken = (token: string) => localStorage.setItem('session_token', token);
 const getUserId = () => localStorage.getItem('app_user_id');
@@ -27,7 +31,7 @@ const clearAuth = () => {
     localStorage.removeItem('session_token'); 
     localStorage.removeItem('app_user_id'); 
     localStorage.removeItem('app_user_role');
-    Object.keys(_cache).forEach(k => delete _cache[k]);
+    clearCache();
 };
 
 const apiCall = async (action: string, data: any = {}, forceRefresh = false) => {
@@ -62,7 +66,7 @@ const apiCall = async (action: string, data: any = {}, forceRefresh = false) => 
             if (!res.ok) {
                 if (res.status === 401) { 
                     clearAuth(); 
-                    if (!window.location.hash.includes('login')) window.location.hash = '#/login'; 
+                    // No more hash redirection here. Let the components handle it.
                 }
                 throw new Error(json.message || `Server Error ${res.status}`);
             }
@@ -90,18 +94,24 @@ export const initMockData = () => {
 };
 
 export const loginUser = async (email: string, password: string) => {
+    clearCache();
     const response = await apiCall('login', { email, password }, true);
-    setAuthToken(response.token);
-    setUserId(response.id);
-    localStorage.setItem('app_user_role', response.role);
+    if (response.token) {
+        setAuthToken(response.token);
+        setUserId(response.id);
+        localStorage.setItem('app_user_role', response.role);
+    }
     return response;
 };
 
 export const registerUser = async (email: string, password: string, userData: Partial<User>) => {
+    clearCache();
     const response = await apiCall('register', { email, password, ...userData }, true);
-    setAuthToken(response.token);
-    setUserId(response.id);
-    localStorage.setItem('app_user_role', response.role);
+    if (response.token) {
+        setAuthToken(response.token);
+        setUserId(response.id);
+        localStorage.setItem('app_user_role', response.role);
+    }
     return response;
 };
 

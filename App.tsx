@@ -31,13 +31,14 @@ import { UserRole } from './types';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: UserRole }> = ({ children, requiredRole }) => {
   const userId = getCurrentUserId();
-  const role = getUserRole();
+  const role = getUserRole() || localStorage.getItem('app_user_role') as UserRole;
 
   if (!userId) {
     return <Navigate to="/login" replace />;
   }
 
-  if (requiredRole && role !== requiredRole) {
+  // Allow transitions if the role is currently being populated
+  if (requiredRole && role && role !== requiredRole) {
     return <Navigate to={role === UserRole.ADMIN ? '/admin' : '/dashboard'} replace />;
   }
 

@@ -55,9 +55,13 @@ export const Auth: React.FC = () => {
     setIsLoading(true);
     setError('');
     try {
-      const user = await loginUser(email, password);
-      if (user.blocked) throw new Error('Security Error: Account restricted.');
-      navigate(user.role === UserRole.ADMIN ? '/admin' : '/dashboard', { replace: true });
+      const response = await loginUser(email, password);
+      if (response.blocked) throw new Error('Security Error: Account restricted.');
+      
+      // Small timeout to ensure localStorage is flushed before ProtectedRoute triggers
+      setTimeout(() => {
+        navigate(response.role === UserRole.ADMIN ? '/admin' : '/dashboard', { replace: true });
+      }, 100);
     } catch (err: any) {
       setError(err.message || 'Authentication failed.');
     } finally {
@@ -73,8 +77,11 @@ export const Auth: React.FC = () => {
     try {
       const currentIp = await getPublicIp();
       const currentDevice = getFingerprint();
-      await registerUser(email, password, { name, country, telegramId, ipAddress: currentIp, deviceId: currentDevice });
-      navigate('/dashboard', { replace: true });
+      const response = await registerUser(email, password, { name, country, telegramId, ipAddress: currentIp, deviceId: currentDevice });
+      
+      setTimeout(() => {
+        navigate(response.role === UserRole.ADMIN ? '/admin' : '/dashboard', { replace: true });
+      }, 100);
     } catch (err: any) {
       setError(err.message || 'Registration failed.');
     } finally {

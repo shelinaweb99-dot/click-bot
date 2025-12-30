@@ -213,29 +213,43 @@ export default async function handler(req, res) {
             expires.setHours(expires.getHours() + 168);
 
             if (!user) {
-                if (action === 'login') return res.status(404).json({ message: "Not found." });
+                if (action === 'login') return res.status(404).json({ message: "Account not found. Please register." });
                 const hashedPassword = await bcrypt.hash(password, 10);
                 user = await User.create({
                     id: 'u_' + Date.now(),
-                    email: email.toLowerCase(), password: hashedPassword,
-                    sessionToken: newToken, tokenExpires: expires,
+                    email: email.toLowerCase(), 
+                    password: hashedPassword,
+                    sessionToken: newToken, 
+                    tokenExpires: expires,
                     joinedAt: new Date().toISOString(),
                     role: email.toLowerCase() === 'admin@admin.com' ? 'ADMIN' : 'USER',
-                    balance: 0, ...userData
+                    balance: 0, 
+                    ...userData
                 });
             } else {
-                if (!(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: "Invalid." });
-                user.sessionToken = newToken; user.tokenExpires = expires;
+                if (action === 'register') return res.status(400).json({ message: "Email already exists." });
+                if (!(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: "Invalid credentials." });
+                user.sessionToken = newToken; 
+                user.tokenExpires = expires;
                 if (userData.telegramId) user.telegramId = userData.telegramId;
                 if (userData.deviceId) user.deviceId = userData.deviceId;
                 if (userData.ipAddress) user.ipAddress = userData.ipAddress;
                 await user.save();
             }
-            const userObj = user.toObject(); delete userObj.password;
-            return res.json({ ...userObj, token: newToken });
+            
+            // Explicitly return the role and ID for frontend storage
+            const userObj = user.toObject(); 
+            delete userObj.password;
+            return res.json({ 
+                id: userObj.id,
+                email: userObj.email,
+                role: userObj.role,
+                name: userObj.name,
+                token: newToken 
+            });
         }
 
-        if (!currentUser) return res.status(401).json({ message: "Session expired." });
+        if (!currentUser) return res.status(401).json({ message: "Session expired. Please re-authenticate." });
 
         switch (action) {
             case 'getUser': return res.json(currentUser);
