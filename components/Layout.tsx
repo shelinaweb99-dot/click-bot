@@ -19,7 +19,7 @@ import {
   Loader2,
   MonitorPlay
 } from 'lucide-react';
-import { logout, getCurrentUserId, getUserRole, getAdSettings, subscribeToChanges } from '../services/mockDb';
+import { logout, getCurrentUserId, getUserRole, getAdSettings, getUserById, subscribeToChanges } from '../services/mockDb';
 import { UserRole, AdSettings } from '../types';
 import { AdsterraBanner } from './AdsterraBanner';
 
@@ -27,6 +27,15 @@ export const UserLayout: React.FC<{ children: React.ReactNode }> = ({ children }
   const location = useLocation();
   const isGames = location.pathname.includes('/games');
   const [adSettings, setAdSettings] = useState<AdSettings | null>(null);
+  const [userName, setUserName] = useState<string>('');
+
+  const fetchUserData = async () => {
+    const id = getCurrentUserId();
+    if (id) {
+      const u = await getUserById(id, true);
+      if (u) setUserName(u.name.split(' ')[0]);
+    }
+  };
 
   useEffect(() => {
     const fetchAds = async () => {
@@ -34,9 +43,21 @@ export const UserLayout: React.FC<{ children: React.ReactNode }> = ({ children }
       setAdSettings(ads);
     };
     fetchAds();
-    const unsub = subscribeToChanges(fetchAds);
+    fetchUserData();
+    const unsub = subscribeToChanges(() => {
+      fetchAds();
+      fetchUserData();
+    });
     return unsub;
   }, []);
+
+  const getGreetingText = () => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return "Good morning";
+    if (hour >= 12 && hour < 18) return "Good afternoon";
+    if (hour >= 18 && hour < 22) return "Good evening";
+    return "Good night";
+  };
 
   const bannerHeight = adSettings?.bannerAd?.isEnabled ? (adSettings.bannerAd.height || 50) : 0;
 
@@ -50,7 +71,7 @@ export const UserLayout: React.FC<{ children: React.ReactNode }> = ({ children }
                <Trophy size={20} />
             </NavLink>
             <h1 className="text-[10px] sm:text-xs font-black text-white uppercase tracking-[0.2em] text-center flex-1 px-2 line-clamp-1">
-              Click to earn USDT
+              {getGreetingText()}, {userName || 'Member'}
             </h1>
             <NavLink to="/profile" className="text-gray-400 hover:text-white transition p-2" title="Settings">
                <Settings size={20} />
