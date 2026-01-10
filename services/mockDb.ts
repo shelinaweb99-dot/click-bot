@@ -6,7 +6,7 @@ const API_URL = '/api';
 // --- GLOBAL STATE CACHE ---
 const _cache: Record<string, { data: any, timestamp: number }> = {};
 const _pendingRequests: Record<string, Promise<any>> = {};
-const CACHE_TTL = 60000;
+const CACHE_TTL = 30000; // Reduced TTL for fresher data but still prevents spam
 
 const getCached = (key: string) => {
     const item = _cache[key];
@@ -43,7 +43,7 @@ const apiCall = async (action: string, data: any = {}, forceRefresh = false) => 
     if (_pendingRequests[cacheKey]) return _pendingRequests[cacheKey];
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 12000); // Tighter timeout
     
     const requestPromise = (async () => {
         try {
@@ -62,21 +62,20 @@ const apiCall = async (action: string, data: any = {}, forceRefresh = false) => 
             });
             clearTimeout(timeoutId);
             
-            // Check if response is JSON
             const contentType = res.headers.get("content-type");
             let json: any = {};
-            if (contentType && contentType.indexOf("application/json") !== -1) {
+            if (contentType && contentType.includes("application/json")) {
                 json = await res.json();
             } else {
                 const text = await res.text();
-                throw new Error(text || `Server Error ${res.status}`);
+                throw new Error(text || `Error ${res.status}`);
             }
 
             if (!res.ok) {
                 if (res.status === 401) { 
                     clearAuth(); 
                 }
-                throw new Error(json.message || `Server Error ${res.status}`);
+                throw new Error(json.message || `Error ${res.status}`);
             }
             
             setCache(cacheKey, json);
@@ -93,12 +92,12 @@ const apiCall = async (action: string, data: any = {}, forceRefresh = false) => 
     return requestPromise;
 };
 
+// Optimized initialization: Don't pre-fetch everything.
+// Critical data will be requested by the Dashboard or Auth component on mount.
 export const initMockData = () => {
     const token = getAuthToken();
     if (token) {
-        // Pre-fetch non-critical data
-        getUserById(getUserId() || '').catch(() => {});
-        getTasks().catch(() => {});
+        // Minimal background handshake if needed
     }
 };
 
@@ -212,7 +211,7 @@ export const subscribeToChanges = (cb: () => void) => {
 
 export const getLeaderboard = async () => {
     const users = await apiCall('getAllUsers', {}, false);
-    return Array.isArray(users) ? users.sort((a: any, b: any) => (b.balance || 0) - (a.balance || 0)).slice(0, 10) : [];
+    return Array.isArray(users) ? [...users].sort((a: any, b: any) => (b.balance || 0) - (a.balance || 0)).slice(0, 10) : [];
 };
 
 export const getUsers = async () => apiCall('getAllUsers', {}, false);
@@ -241,28 +240,20 @@ export const getPublicIp = async () => {
         const res = await fetch('https://api.ipify.org?format=json');
         const data = await res.json();
         return data.ip;
-    } catch (e) {
-        return "127.0.0.1";
-    }
+    } catch (e) { return "127.0.0.1"; }
 };
 
-export const getFingerprint = () => {
-    return 'dev_' + Math.random().toString(36).substr(2, 9);
-};
+export const getFingerprint = () => 'dev_' + Math.random().toString(36).substr(2, 9);
 
 export const triggerHoneypot = () => {
-    console.warn("Security Event: Administrative Honeypot Triggered.");
     apiCall('logSecurityEvent', { type: 'HONEYPOT_ACCESS' });
 };
 
 export const savePaymentMethod = async (method: WithdrawalMethod) => {
     const methods = await getPaymentMethods();
     const index = methods.findIndex(m => m.id === method.id);
-    if (index !== -1) {
-        methods[index] = method;
-    } else {
-        methods.push(method);
-    }
+    if (index !== -1) methods[index] = method;
+    else methods.push(method);
     return updateAllPaymentMethods(methods);
 };
 
@@ -272,9 +263,7 @@ export const deletePaymentMethod = async (id: string) => {
     return updateAllPaymentMethods(filtered);
 };
 
-export const processReferral = async (userId: string, code: string) => {
-    return apiCall('processReferral', { code }, true);
-};
+export const processReferral = async (userId: string, code: string) => apiCall('processReferral', { code }, true);
 
 export const getAnnouncements = async (): Promise<Announcement[]> => {
     const data = await apiCall('getSettings', { key: 'announcements' });
@@ -297,9 +286,7 @@ export const deleteAnnouncement = async (id: string) => {
     return res;
 };
 
-export const getGameSettings = async (): Promise<GameSettings> => {
-    return apiCall('getSettings', { key: 'games' });
-};
+export const getGameSettings = async (): Promise<GameSettings> => apiCall('getSettings', { key: 'games' });
 
 export const saveGameSettings = async (settings: GameSettings) => {
     const res = await apiCall('saveSettings', { key: 'games', payload: settings }, true);
@@ -314,9 +301,7 @@ export const playMiniGame = async (userId: string, gameType: string) => {
     return res;
 };
 
-export const getShortsSettings = async (): Promise<ShortsSettings> => {
-    return apiCall('getSettings', { key: 'shorts' });
-};
+export const getShortsSettings = async (): Promise<ShortsSettings> => apiCall('getSettings', { key: 'shorts' });
 
 export const saveShortsSettings = async (settings: ShortsSettings) => {
     const res = await apiCall('saveSettings', { key: 'shorts', payload: settings }, true);
@@ -336,9 +321,7 @@ export const deleteShort = async (id: string) => {
     return res;
 };
 
-export const getShorts = async (): Promise<ShortVideo[]> => {
-    return apiCall('getShorts', {}, false);
-};
+export const getShorts = async (): Promise<ShortVideo[]> => apiCall('getShorts', {}, false);
 
 export const recordShortView = async (userId: string, videoId: string) => {
     const res = await apiCall('recordShortView', { videoId }, true);

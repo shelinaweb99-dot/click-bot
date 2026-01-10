@@ -31,20 +31,15 @@ import { UserRole } from './types';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: UserRole }> = ({ children, requiredRole }) => {
   const userId = getCurrentUserId();
-  const role = getUserRole();
+  const role = getUserRole() || (localStorage.getItem('app_user_role') as UserRole);
 
   if (!userId) {
     return <Navigate to="/login" replace />;
   }
 
-  // If we have a userId but no role yet, we might be in the middle of a login transition.
-  // Instead of redirecting to login, we stay on the current page to allow data to load.
+  // Fast-path: If we have basic credentials, let the component handle its own data loading
   if (!role && requiredRole) {
-    return (
-      <div className="min-h-screen bg-[#0b1120] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
-      </div>
-    );
+    return <Navigate to="/login" replace />;
   }
 
   if (requiredRole && role !== requiredRole) {

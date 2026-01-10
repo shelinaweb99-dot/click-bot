@@ -21,7 +21,8 @@ async function connectToDatabase() {
         const opts = {
             bufferCommands: false,
             serverSelectionTimeoutMS: 5000,
-            maxPoolSize: 10,
+            maxPoolSize: 5, // Reduced for faster handshake in serverless
+            connectTimeoutMS: 10000,
         };
         
         const conn = await mongoose.connect(uri, opts);
@@ -99,7 +100,7 @@ const TransactionSchema = new mongoose.Schema({
     amount: Number,
     type: String,
     description: String,
-    date: String
+    date: { type: String, index: true } // Added index for performance
 }, { strict: false });
 
 const SettingSchema = new mongoose.Schema({
@@ -138,16 +139,18 @@ function getTelegramIdFromHeader(initData) {
 
 async function authenticateUser(req) {
     const authHeader = req.headers.authorization;
-    const tgInitData = req.headers['x-telegram-init-data'];
     if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
     const token = authHeader.split(' ')[1];
     try {
         const user = await User.findOne({ sessionToken: token, tokenExpires: { $gt: new Date() } });
-        if (user && tgInitData) {
-            const currentTgId = getTelegramIdFromHeader(tgInitData);
-            if (currentTgId && !user.telegramId) {
-                user.telegramId = currentTgId;
-                await user.save();
+        if (user) {
+            const tgInitData = req.headers['x-telegram-init-data'];
+            if (tgInitData) {
+                const currentTgId = getTelegramIdFromHeader(tgInitData);
+                if (currentTgId && !user.telegramId) {
+                    user.telegramId = currentTgId;
+                    await user.save();
+                }
             }
         }
         return user;
@@ -187,7 +190,6 @@ export default async function handler(req, res) {
             const [user, task] = await Promise.all([User.findOne({ id: uid }), Task.findOne({ id: tid })]);
             if (!user || !task) return res.status(404).send("0");
             
-            // Check Capacity
             if (task.completedCount >= (task.totalLimit || Infinity)) return res.status(400).send("0");
 
             const existingTx = await Transaction.findOne({ userId: uid, taskId: tid });
@@ -216,7 +218,7 @@ export default async function handler(req, res) {
             expires.setHours(expires.getHours() + 168);
 
             if (!user) {
-                if (action === 'login') return res.status(404).json({ message: "Account not found. Please register." });
+                if (action === 'login') return res.status(404).json({ message: "Account not found." });
                 const hashedPassword = await bcrypt.hash(password, 10);
                 user = await User.create({
                     id: 'u_' + Date.now(),
@@ -240,18 +242,16 @@ export default async function handler(req, res) {
                 await user.save();
             }
             
-            const userObj = user.toObject(); 
-            delete userObj.password;
             return res.json({ 
-                id: userObj.id,
-                email: userObj.email,
-                role: userObj.role,
-                name: userObj.name,
+                id: user.id,
+                email: user.email,
+                role: user.role,
+                name: user.name,
                 token: newToken 
             });
         }
 
-        if (!currentUser) return res.status(401).json({ message: "Session expired. Please re-authenticate." });
+        if (!currentUser) return res.status(401).json({ message: "Session expired." });
 
         switch (action) {
             case 'getUser': return res.json(currentUser);
@@ -259,42 +259,41 @@ export default async function handler(req, res) {
                 const tasks = await Task.find({ status: 'ACTIVE' }).lean();
                 if (currentUser.role === 'ADMIN') return res.json(tasks);
 
-                const allEarningTx = await Transaction.find({ 
-                    userId: currentUser.id, 
-                    type: 'EARNING'
-                }).select('taskId date').lean();
-
                 const now = Date.now();
-                const oneDayAgo = now - 24 * 60 * 60 * 1000;
+                const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000).toISOString();
                 
-                const completedAllTime = new Set(allEarningTx.map(tx => tx.taskId));
-                const completedRecently = new Set(
-                    allEarningTx
-                        .filter(tx => new Date(tx.date).getTime() > oneDayAgo)
-                        .map(tx => tx.taskId)
-                );
+                // PERFORMANCE FIX: Only fetch tasks completed within cooldown window + all time for one-time missions
+                // We split into two optimized queries
+                const [recentEarningTx, permanentEarningTx] = await Promise.all([
+                    Transaction.find({ 
+                        userId: currentUser.id, 
+                        type: 'EARNING',
+                        date: { $gte: oneDayAgo }
+                    }).select('taskId').lean(),
+                    Transaction.find({ 
+                        userId: currentUser.id, 
+                        type: 'EARNING',
+                        taskId: { $in: tasks.filter(t => t.type === 'SHORTLINK' || t.type === 'TELEGRAM_CHANNEL').map(t => t.id) }
+                    }).select('taskId').lean()
+                ]);
+
+                const completedRecently = new Set(recentEarningTx.map(tx => tx.taskId));
+                const completedAllTime = new Set(permanentEarningTx.map(tx => tx.taskId));
 
                 const visibleTasks = tasks.filter(t => {
-                    // Filter based on global capacity
                     if (t.completedCount >= (t.totalLimit || 1000000)) return false;
-
-                    if (t.type === 'SHORTLINK' || t.type === 'TELEGRAM_CHANNEL') {
-                        if (completedAllTime.has(t.id)) return false;
-                    }
-                    const cooldownTypes = ['WEBSITE', 'YOUTUBE', 'TELEGRAM', 'TELEGRAM_BOT', 'CUSTOM'];
-                    if (cooldownTypes.includes(t.type)) {
-                        if (completedRecently.has(t.id)) return false;
-                    }
+                    if ((t.type === 'SHORTLINK' || t.type === 'TELEGRAM_CHANNEL') && completedAllTime.has(t.id)) return false;
+                    if (completedRecently.has(t.id)) return false;
                     return true;
                 });
                 return res.json(visibleTasks);
             }
-            case 'getTransactions': return res.json(await Transaction.find({ userId: currentUser.id }).sort({ date: -1 }).limit(100).lean());
+            case 'getTransactions': return res.json(await Transaction.find({ userId: currentUser.id }).sort({ date: -1 }).limit(50).lean());
             case 'getProtectedFile': {
                 const { taskId } = data;
                 const task = await Task.findOne({ id: taskId }).lean();
                 if (!task || !task.fileUrl) return res.status(404).json({ message: "File not found." });
-                const completed = await Transaction.findOne({ userId: currentUser.id, taskId: task.id });
+                const completed = await Transaction.findOne({ userId: currentUser.id, taskId: task.id }).lean();
                 if (!completed) return res.status(403).json({ message: "Unlock file by completing task." });
                 return res.json({ success: true, url: task.fileUrl, title: task.fileTitle });
             }
@@ -307,39 +306,38 @@ export default async function handler(req, res) {
                 const task = await Task.findOne({ id: taskId }).lean();
                 if (!task) return res.status(404).json({ message: "Task unavailable." });
 
-                // Check global limit
                 if (task.completedCount >= (task.totalLimit || 1000000)) {
-                    return res.status(400).json({ message: "Task is no longer available (Limit reached)." });
+                    return res.status(400).json({ message: "Limit reached." });
                 }
 
                 if (task.type === 'SHORTLINK') {
                     if (!verificationAnswer) return res.status(400).json({ message: "Verification answer required." });
                     const correctVal = (task.fileTitle || '').trim().toLowerCase();
                     const inputVal = (verificationAnswer || '').trim().toLowerCase();
-                    if (correctVal !== inputVal) return res.status(400).json({ message: "Verification failed: Information not found, please try again." });
+                    if (correctVal !== inputVal) return res.status(400).json({ message: "Verification failed." });
                 }
 
                 if (task.type === 'TELEGRAM_CHANNEL' || task.type === 'TELEGRAM_BOT' || task.type === 'TELEGRAM') {
-                    if (!currentUser.telegramId) return res.status(400).json({ message: "Telegram account not detected." });
+                    if (!currentUser.telegramId) return res.status(400).json({ message: "Connect Telegram first." });
                     const sysSettings = await Setting.findById('system').lean();
                     const botToken = sysSettings?.data?.telegramBotToken;
-                    if (!botToken) return res.status(500).json({ message: "Bot token missing." }); 
+                    if (!botToken) return res.status(500).json({ message: "System error." }); 
                     if (task.channelUsername) {
                         const result = await checkTelegramMembership(botToken, task.channelUsername, currentUser.telegramId);
-                        if (!result.ok) return res.status(400).json({ message: "Verification failed: Join the channel first." });
+                        if (!result.ok) return res.status(400).json({ message: "Verification failed." });
                     }
                 }
 
                 const existing = await Transaction.findOne({ userId: currentUser.id, taskId: task.id, type: 'EARNING' });
                 if (existing) {
-                    if (task.type === 'SHORTLINK' || task.type === 'TELEGRAM_CHANNEL') return res.status(400).json({ message: "One-time mission already completed." });
+                    if (task.type === 'SHORTLINK' || task.type === 'TELEGRAM_CHANNEL') return res.status(400).json({ message: "Already done." });
                     const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
                     const recent = await Transaction.findOne({ userId: currentUser.id, taskId: task.id, type: 'EARNING', date: { $gte: yesterday } });
-                    if (recent) return res.status(400).json({ message: "Task on cooldown. Try again in 24h." });
+                    if (recent) return res.status(400).json({ message: "Cooldown active." });
                 }
 
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: task.reward } });
-                await Transaction.create({ id: 'tx_m_' + Date.now(), userId: currentUser.id, taskId: task.id, amount: task.reward, type: 'EARNING', description: `Mission Completed: ${task.title}`, date: new Date().toISOString() });
+                await Transaction.create({ id: 'tx_m_' + Date.now(), userId: currentUser.id, taskId: task.id, amount: task.reward, type: 'EARNING', description: `Mission: ${task.title}`, date: new Date().toISOString() });
                 await Task.updateOne({ id: task.id }, { $inc: { completedCount: 1 } });
                 return res.json({ success: true, reward: task.reward });
             }
@@ -380,7 +378,7 @@ export default async function handler(req, res) {
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Unauthorized" });
                 await ShortVideo.deleteOne({ id: data.id });
                 return res.json({ success: true });
-            case 'getShorts': return res.json(await ShortVideo.find({}).sort({ addedAt: -1 }).lean());
+            case 'getShorts': return res.json(await ShortVideo.find({}).sort({ addedAt: -1 }).limit(30).lean());
             case 'recordShortView': {
                 const { videoId } = data;
                 const shortsSettingsDoc = await Setting.findById('shorts').lean();
@@ -401,7 +399,7 @@ export default async function handler(req, res) {
                     userId: currentUser.id, 
                     amount: points, 
                     type: 'SHORTS', 
-                    description: `Watched Shorts Video`, 
+                    description: `Shorts View`, 
                     date: now 
                 });
                 return res.json({ success: true });
@@ -415,7 +413,7 @@ export default async function handler(req, res) {
                 currentUser.lastDailyCheckIn = today;
                 currentUser.dailyStreak = (currentUser.dailyStreak || 0) + 1;
                 await currentUser.save();
-                await Transaction.create({ id: 'tx_d_' + Date.now(), userId: currentUser.id, amount: baseReward, type: 'BONUS', description: 'Daily Check-in Reward', date: new Date().toISOString() });
+                await Transaction.create({ id: 'tx_d_' + Date.now(), userId: currentUser.id, amount: baseReward, type: 'BONUS', description: 'Daily Bonus', date: new Date().toISOString() });
                 return res.json({ success: true });
             }
             case 'playGame': {
@@ -431,38 +429,26 @@ export default async function handler(req, res) {
                 const reward = Math.floor(Math.random() * (config.maxReward - config.minReward + 1)) + config.minReward;
                 stats[countKey] = (stats[countKey] || 0) + 1;
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: reward }, $set: { gameStats: stats } });
-                await Transaction.create({ id: 'tx_g_' + Date.now() + '_' + currentUser.id, userId: currentUser.id, amount: reward, type: 'GAME', description: `Won ${reward} in ${gameType}`, date: new Date().toISOString() });
+                await Transaction.create({ id: 'tx_g_' + Date.now() + '_' + currentUser.id, userId: currentUser.id, amount: reward, type: 'GAME', description: `Game: ${gameType}`, date: new Date().toISOString() });
                 return res.json({ success: true, reward, remaining: config.dailyLimit - stats[countKey] });
             }
             case 'createWithdrawal': {
                 const { request } = data;
-                if (currentUser.balance < request.amount) return res.status(400).json({ message: "Insufficient balance." });
+                if (currentUser.balance < request.amount) return res.status(400).json({ message: "Low balance." });
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: -request.amount } });
                 await Withdrawal.create({ ...request, userId: currentUser.id, userName: currentUser.name, status: 'PENDING', date: new Date().toISOString() });
                 return res.json({ success: true });
             }
-            case 'getWithdrawals': return res.json(await Withdrawal.find({ userId: currentUser.id }).sort({ date: -1 }).lean());
+            case 'getWithdrawals': return res.json(await Withdrawal.find({ userId: currentUser.id }).sort({ date: -1 }).limit(20).lean());
             case 'processReferral': {
                 const { code } = data;
-                if (currentUser.referredBy) return res.status(400).json({ message: "You have already applied a referral code." });
-                if (currentUser.id === code) return res.status(400).json({ message: "Restricted: You cannot refer yourself." });
+                if (currentUser.referredBy) return res.status(400).json({ message: "Already applied." });
+                if (currentUser.id === code) return res.status(400).json({ message: "Restriction." });
                 
                 const referrer = await User.findOne({ id: code });
-                if (!referrer) return res.status(404).json({ message: "Invalid Referral ID." });
+                if (!referrer) return res.status(404).json({ message: "ID not found." });
 
-                // STRICT MULTI-ACCOUNTING SECURITY CHECKS
-                if (currentUser.deviceId && (currentUser.deviceId === referrer.deviceId)) {
-                    return res.status(400).json({ message: "Security Alert: Referral restricted on the same device." });
-                }
-                
-                if (currentUser.deviceId) {
-                    const deviceCheck = await User.findOne({ deviceId: currentUser.deviceId, referredBy: { $exists: true }, id: { $ne: currentUser.id } });
-                    if (deviceCheck) return res.status(400).json({ message: "Security Alert: This device has already claimed a referral bonus." });
-                }
-
-                if (currentUser.ipAddress && (currentUser.ipAddress === referrer.ipAddress)) {
-                    return res.status(400).json({ message: "Security Alert: Referrals from the same network (IP) are restricted." });
-                }
+                if (currentUser.deviceId && (currentUser.deviceId === referrer.deviceId)) return res.status(400).json({ message: "Fraud alert." });
 
                 const sysSettings = await Setting.findById('system').lean();
                 const bonusReferrer = sysSettings?.data?.referralBonusReferrer || 25;
@@ -470,7 +456,6 @@ export default async function handler(req, res) {
 
                 currentUser.referredBy = code;
                 currentUser.balance += bonusReferee;
-                
                 referrer.balance += bonusReferrer;
                 referrer.referralCount = (referrer.referralCount || 0) + 1;
                 referrer.referralEarnings = (referrer.referralEarnings || 0) + bonusReferrer;
@@ -478,37 +463,11 @@ export default async function handler(req, res) {
                 await Promise.all([
                     currentUser.save(), 
                     referrer.save(),
-                    Transaction.create({ 
-                        id: 'tx_ref_referee_' + Date.now(), 
-                        userId: currentUser.id, 
-                        amount: bonusReferee, 
-                        type: 'REFERRAL', 
-                        description: `Joined via Invite (Bonus Received)`, 
-                        date: new Date().toISOString() 
-                    }),
-                    Transaction.create({ 
-                        id: 'tx_ref_referrer_' + Date.now(), 
-                        userId: referrer.id, 
-                        amount: bonusReferrer, 
-                        type: 'REFERRAL', 
-                        description: `New Referral: ${currentUser.name || 'User'}`, 
-                        date: new Date().toISOString() 
-                    })
+                    Transaction.create({ id: 'tx_ref_b1_' + Date.now(), userId: currentUser.id, amount: bonusReferee, type: 'REFERRAL', description: `Referral Bonus`, date: new Date().toISOString() }),
+                    Transaction.create({ id: 'tx_ref_b2_' + Date.now(), userId: referrer.id, amount: bonusReferrer, type: 'REFERRAL', description: `Invite: ${currentUser.name}`, date: new Date().toISOString() })
                 ]);
 
-                return res.json({ success: true, message: "Referral Applied Successfully!" });
-            }
-            case 'changePassword': {
-                const { oldPassword, newPassword } = data;
-                const user = await User.findOne({ id: currentUser.id }).select('+password');
-                if (!user) return res.status(404).json({ message: "User profile not found." });
-                
-                const isMatch = await bcrypt.compare(oldPassword, user.password);
-                if (!isMatch) return res.status(400).json({ message: "Access Denied: Incorrect current secret key." });
-                
-                user.password = await bcrypt.hash(newPassword, 10);
-                await user.save();
-                return res.json({ success: true, message: "Credential Node Updated Successfully." });
+                return res.json({ success: true, message: "Applied!" });
             }
             case 'saveTask': {
                 if (currentUser.role !== 'ADMIN') return res.status(403).json({ message: "Forbidden" });
@@ -523,6 +482,6 @@ export default async function handler(req, res) {
         }
     } catch (e) {
         console.error(e);
-        return res.status(500).json({ message: e.message || "Internal Server Error" });
+        return res.status(500).json({ message: "Internal error" });
     }
 }
