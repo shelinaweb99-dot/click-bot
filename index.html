@@ -3,8 +3,20 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Click to earn USDT Bot</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>ClickEarn USDT</title>
+    
+    <!-- PWA Settings -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0b1120" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ClickEarn" />
+    
+    <!-- Android Specific UI -->
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b1120">
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -13,24 +25,62 @@
     <style>
       :root {
         --bg-deep: #030712;
-        --card-bg: #111827;
         --accent-blue: #3b82f6;
       }
-      ::-webkit-scrollbar {
-        width: 0px;
-      }
+      ::-webkit-scrollbar { width: 0px; }
       body {
-        background-color: var(--bg-deep);
+        background-color: #0b1120;
         color: #f3f4f6;
         font-family: 'Inter', sans-serif;
-        -webkit-tap-highlight-color: transparent;
-        overflow-x: hidden;
         margin: 0;
         padding: 0;
+        overflow-x: hidden;
+        overscroll-behavior-y: contain;
       }
+      
+      #pwa-splash {
+        position: fixed;
+        inset: 0;
+        background: #0b1120;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.4s;
+      }
+      .splash-logo {
+        width: 90px;
+        height: 90px;
+        background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        border-radius: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 60px rgba(59, 130, 246, 0.2);
+        animation: splash-pulse 2s infinite ease-in-out;
+      }
+      .splash-text {
+        margin-top: 32px;
+        font-weight: 900;
+        letter-spacing: 0.4em;
+        font-size: 11px;
+        color: rgba(59, 130, 246, 0.8);
+        text-transform: uppercase;
+      }
+      @keyframes splash-pulse {
+        0%, 100% { transform: scale(1); filter: brightness(1); }
+        50% { transform: scale(1.04); filter: brightness(1.2); }
+      }
+      .loaded #pwa-splash {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+
       .glass-card {
-        background: rgba(17, 24, 39, 0.7);
-        backdrop-filter: blur(12px);
+        background: rgba(30, 41, 59, 0.5);
+        backdrop-filter: blur(16px);
         border: 1px solid rgba(255, 255, 255, 0.05);
       }
       .mesh-gradient {
@@ -39,16 +89,6 @@
           radial-gradient(at 0% 0%, hsla(210,100%,45%,1) 0, transparent 50%), 
           radial-gradient(at 50% 0%, hsla(240,100%,45%,1) 0, transparent 50%), 
           radial-gradient(at 100% 0%, hsla(280,100%,45%,1) 0, transparent 50%);
-      }
-      .active-nav-dot::after {
-        content: '';
-        position: absolute;
-        bottom: -6px;
-        width: 4px;
-        height: 4px;
-        background: currentColor;
-        border-radius: 50%;
-        box-shadow: 0 0 8px currentColor;
       }
     </style>
   <script type="importmap">
@@ -63,14 +103,36 @@
     "vite": "https://esm.sh/vite@^7.3.0",
     "mongoose": "https://esm.sh/mongoose@^9.1.0",
     "crypto": "https://esm.sh/crypto@^1.0.1",
-    "bcryptjs": "https://esm.sh/bcryptjs@^3.0.3"
+    "bcryptjs": "https://esm.sh/bcryptjs@^3.0.3",
+    "@capacitor/cli": "https://esm.sh/@capacitor/cli@^8.0.1"
   }
 }
 </script>
 <link rel="stylesheet" href="/index.css">
 </head>
   <body>
+    <div id="pwa-splash">
+        <div class="splash-logo">
+            <svg width="45" height="45" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        <div class="splash-text">Secure Earning Node</div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
+    <script>
+      // Function to hide splash externally called by React when ready
+      window.APP_HIDE_SPLASH = () => {
+          document.body.classList.add('loaded');
+      };
+      
+      // Fallback if React fails to mount
+      window.addEventListener('load', () => {
+          setTimeout(() => {
+              if (!document.body.classList.contains('loaded')) {
+                  document.body.classList.add('loaded');
+              }
+          }, 4000);
+      });
+    </script>
   </body>
 </html>

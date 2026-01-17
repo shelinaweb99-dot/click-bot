@@ -1,0 +1,9 @@
+{
+  "appId": "com.clickearn.usdt",
+  "appName": "ClickEarn",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "cleartext": true
+  }
+}

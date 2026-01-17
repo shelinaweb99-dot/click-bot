@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, SystemSettings } from '../../types';
 import { getCurrentUserId, getUserById, processReferral, subscribeToChanges, getSystemSettings } from '../../services/mockDb';
-import { Users, Copy, CheckCircle, Gift, Loader2, Sparkles, ShieldAlert } from 'lucide-react';
+import { Users, Copy, CheckCircle, Gift, Loader2, Sparkles, ShieldAlert, Share2 } from 'lucide-react';
+import { haptics } from '../../services/haptics';
 
 export const UserReferrals: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -46,8 +47,29 @@ export const UserReferrals: React.FC = () => {
 
   const handleCopy = () => {
       if (!user) return;
+      haptics.light();
       navigator.clipboard.writeText(user.id);
       alert("Referral ID Copied!");
+  };
+
+  const handleShare = async () => {
+      if (!user) return;
+      haptics.medium();
+      const shareData = {
+          title: 'Join ClickEarn USDT',
+          text: `Join ClickEarn USDT and get a joining bonus! Use my invite ID: ${user.id}`,
+          url: window.location.origin
+      };
+
+      try {
+          if (navigator.share) {
+              await navigator.share(shareData);
+          } else {
+              handleCopy();
+          }
+      } catch (err) {
+          console.error('Share failed', err);
+      }
   };
 
   const handleSubmitReferral = async (e: React.FormEvent) => {
@@ -55,17 +77,22 @@ export const UserReferrals: React.FC = () => {
       if (!user) return;
       setIsLoading(true);
       setMessage('');
+      haptics.medium();
 
       try {
           const res = await processReferral(user.id, refInput.trim());
           if (isMounted.current) {
               setMessage(res.message);
               if (res.success) {
+                  haptics.success();
                   setRefInput('');
                   await fetchData();
+              } else {
+                  haptics.error();
               }
           }
       } catch (err: any) {
+          haptics.error();
           if (isMounted.current) setMessage(err.message || "Failed to process referral.");
       } finally {
           if (isMounted.current) setIsLoading(false);
@@ -116,13 +143,21 @@ export const UserReferrals: React.FC = () => {
                 Earn <span className="font-black text-white underline decoration-pink-300 underline-offset-4">{referrerBonus} Pts</span> for every friend who joins. They get <span className="font-black text-white">{refereeBonus} Pts</span> too!
             </p>
             
-            <div className="bg-black/30 p-4 rounded-2xl flex justify-between items-center border border-white/10 backdrop-blur-md">
-                <div className="flex flex-col">
-                    <span className="text-[8px] font-black text-pink-300 uppercase tracking-widest mb-1">Referral ID</span>
-                    <code className="font-mono text-xl tracking-tight text-white">{user.id}</code>
+            <div className="flex flex-col gap-3">
+                <div className="bg-black/30 p-4 rounded-2xl flex justify-between items-center border border-white/10 backdrop-blur-md">
+                    <div className="flex flex-col">
+                        <span className="text-[8px] font-black text-pink-300 uppercase tracking-widest mb-1">Referral ID</span>
+                        <code className="font-mono text-xl tracking-tight text-white">{user.id}</code>
+                    </div>
+                    <button onClick={handleCopy} className="bg-white/10 hover:bg-white/20 p-3.5 rounded-xl transition-all active:scale-90 border border-white/10">
+                        <Copy size={20} />
+                    </button>
                 </div>
-                <button onClick={handleCopy} className="bg-white/10 hover:bg-white/20 p-3.5 rounded-xl transition-all active:scale-90 border border-white/10">
-                    <Copy size={20} />
+                <button 
+                  onClick={handleShare}
+                  className="w-full bg-white text-pink-600 font-black text-[10px] uppercase tracking-[0.2em] py-4 rounded-2xl shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                >
+                    <Share2 size={16} /> Native Android Share
                 </button>
             </div>
         </div>

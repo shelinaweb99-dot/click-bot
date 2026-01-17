@@ -22,6 +22,7 @@ import {
 import { logout, getCurrentUserId, getUserRole, getAdSettings, getUserById, subscribeToChanges } from '../services/mockDb';
 import { UserRole, AdSettings } from '../types';
 import { AdsterraBanner } from './AdsterraBanner';
+import { PWAInstallPrompt } from './PWAInstallPrompt';
 
 export const UserLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
@@ -63,6 +64,8 @@ export const UserLayout: React.FC<{ children: React.ReactNode }> = ({ children }
 
   return (
     <div className="min-h-screen bg-[#0b1120] flex flex-col font-sans">
+      <PWAInstallPrompt />
+      
       {/* Header */}
       {!isGames && (
         <header className="bg-[#1e293b] px-4 py-3 sticky top-0 z-50 shadow-lg border-b border-white/5 shrink-0">

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserRole } from '../types';
 import { loginUser, registerUser, getCurrentUserId, getUserRole, getPublicIp, getFingerprint } from '../services/mockDb';
-import { Eye, EyeOff, AlertCircle, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, ShieldCheck, Download, Smartphone } from 'lucide-react';
 
 export const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -18,6 +18,36 @@ export const Auth: React.FC = () => {
   const [name, setName] = useState('');
   const [country, setCountry] = useState('');
   const [telegramId, setTelegramId] = useState<number | undefined>(undefined);
+
+  // --- PWA INSTALL LOGIC ---
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBtn, setShowInstallBtn] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallBtn(true);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    
+    // Auto-hide if already in standalone mode
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setShowInstallBtn(false);
+    }
+
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+      setShowInstallBtn(false);
+    }
+  };
 
   useEffect(() => {
     const checkAuth = () => {
@@ -58,7 +88,6 @@ export const Auth: React.FC = () => {
       const response = await loginUser(email, password);
       if (response.blocked) throw new Error('Security Error: Account restricted.');
       
-      // Small timeout to ensure localStorage is flushed before ProtectedRoute triggers
       setTimeout(() => {
         navigate(response.role === UserRole.ADMIN ? '/admin' : '/dashboard', { replace: true });
       }, 100);
@@ -101,8 +130,31 @@ export const Auth: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#030712] p-6 selection:bg-blue-500/30">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#030712] p-6 selection:bg-blue-500/30 overflow-y-auto">
       <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-8 duration-700">
+        
+        {/* APP INSTALL PROMPT - AUTH PAGE VARIANT */}
+        {showInstallBtn && (
+            <div className="mb-10 bg-blue-600/5 border border-blue-500/20 p-5 rounded-[2rem] flex items-center justify-between gap-4 animate-in zoom-in duration-500 shadow-2xl shadow-blue-500/10 relative overflow-hidden group">
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-600/0 via-blue-600/5 to-blue-600/0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
+                <div className="flex items-center gap-4 relative z-10">
+                    <div className="bg-blue-600 p-3 rounded-2xl shadow-lg shadow-blue-900/20 border border-blue-400/20">
+                        <Smartphone size={22} className="text-white" />
+                    </div>
+                    <div>
+                        <p className="text-white font-black text-[12px] uppercase tracking-tight">ClickEarn Mobile</p>
+                        <p className="text-gray-500 text-[9px] font-bold uppercase tracking-widest mt-0.5">Optimized Android UI</p>
+                    </div>
+                </div>
+                <button 
+                    onClick={handleInstallClick}
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-3 rounded-xl font-black text-[10px] uppercase tracking-[0.2em] transition-all active:scale-90 flex items-center gap-2 shadow-xl shadow-blue-900/40 border border-blue-400/20 relative z-10"
+                >
+                    <Download size={14} /> Install
+                </button>
+            </div>
+        )}
+
         <div className="text-center mb-10">
           <div className="inline-flex bg-blue-600/10 p-4 rounded-[2rem] border border-blue-500/20 mb-4 shadow-2xl shadow-blue-500/10">
             <ShieldCheck className="text-blue-500" size={32} />

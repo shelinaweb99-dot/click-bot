@@ -31,19 +31,15 @@ import { UserRole } from './types';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: UserRole }> = ({ children, requiredRole }) => {
   const userId = getCurrentUserId();
-  const role = getUserRole() || (localStorage.getItem('app_user_role') as UserRole);
+  const role = getUserRole() || (localStorage.getItem('app_user_role') as UserRole) || UserRole.USER;
 
   if (!userId) {
     return <Navigate to="/login" replace />;
   }
 
-  // Fast-path: If we have basic credentials, let the component handle its own data loading
-  if (!role && requiredRole) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (requiredRole && role !== requiredRole) {
-    return <Navigate to={role === UserRole.ADMIN ? '/admin' : '/dashboard'} replace />;
+  // Handle cross-role access (Admins can view User pages, but Users cannot view Admin pages)
+  if (requiredRole === UserRole.ADMIN && role !== UserRole.ADMIN) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;

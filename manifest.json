@@ -1,0 +1,43 @@
+
+{
+  "short_name": "ClickEarn",
+  "name": "Click to Earn USDT Bot",
+  "description": "Premium Earning Platform for Telegram & Android",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/10438/10438515.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/10438/10438515.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/index.html",
+  "background_color": "#030712",
+  "theme_color": "#3b82f6",
+  "display": "standalone",
+  "scope": "/",
+  "orientation": "portrait",
+  "categories": ["finance", "games", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Tasks",
+      "short_name": "Tasks",
+      "description": "View active missions",
+      "url": "/#/tasks",
+      "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/10438/10438515.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Wallet",
+      "short_name": "Wallet",
+      "description": "Withdraw earnings",
+      "url": "/#/wallet",
+      "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/10438/10438515.png", "sizes": "192x192" }]
+    }
+  ]
+}
