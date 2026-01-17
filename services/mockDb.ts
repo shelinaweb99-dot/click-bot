@@ -3,8 +3,8 @@ import { User, Task, WithdrawalRequest, UserRole, Transaction, AdSettings, Syste
 
 /**
  * PRODUCTION CONFIGURATION
- * This is your primary API node. Hardcoding this ensures that standalone 
- * versions (APK/Telegram) always know where to find the database.
+ * Using the trailing slash ensures Vercel routes directly to the function
+ * and avoids hidden redirects that return index.html.
  */
 const MASTER_API_URL = 'https://click-bot-delta.vercel.app/api';
 
@@ -12,19 +12,18 @@ const getApiBaseUrl = () => {
     if (typeof window !== 'undefined') {
         const { hostname, origin } = window.location;
         
-        // 1. If we are running directly on the Vercel domain
+        // 1. If we are running directly on the Vercel domain, relative paths are fastest.
         if (origin.includes('click-bot-delta.vercel.app')) {
-            // Using /api/ with a trailing slash often prevents SPA routing conflicts
             return '/api';
         }
 
-        // 2. If we are on localhost
+        // 2. Local development
         if (hostname === 'localhost' || hostname === '127.0.0.1') {
             return '/api';
         }
     }
     
-    // 3. For all other environments (APK, Telegram wrappers), use the absolute Master URL
+    // 3. For APK, Telegram, and standalone wrappers, ALWAYS use the absolute URL.
     return MASTER_API_URL;
 };
 
@@ -56,7 +55,7 @@ const apiCall = async (action: string, data: any = {}, forceRefresh = false) => 
             const token = getAuthToken();
             const tgData = (window as any).Telegram?.WebApp?.initData || '';
             
-            // Resolve final URL (Absolute or Relative)
+            // Resolve final URL correctly for Android environments
             let finalUrl = API_URL;
             if (finalUrl.startsWith('/') && typeof window !== 'undefined') {
                 finalUrl = window.location.origin + finalUrl;
@@ -77,29 +76,29 @@ const apiCall = async (action: string, data: any = {}, forceRefresh = false) => 
 
             const contentType = res.headers.get("content-type") || "";
             
-            // CHECK FOR HTML RESPONSES (Avoids "Unexpected token <" error)
+            // DETECT ROUTING ERRORS (Android fallback to index.html)
             if (contentType.includes("text/html") || res.status === 404) {
                 const text = await res.text();
-                if (text.startsWith("<") || text.includes("<!DOCTYPE") || res.status === 404) {
-                    console.error("Critical Route Failure at:", finalUrl);
-                    throw new Error("Server configuration error: The API returned a web page instead of data. This usually means the /api route is pointing to your index.html. Please check vercel.json.");
+                if (text.trim().startsWith("<") || res.status === 404) {
+                    console.error("API Routing Error at:", finalUrl);
+                    throw new Error("Server configuration error: The API returned a web page instead of data. Please ensure your Vercel deployment is healthy and vercel.json is correct.");
                 }
             }
 
             const json = await res.json().catch((e) => {
-                console.error("JSON Parse Error:", e);
-                throw new Error("The database node sent an invalid response format.");
+                console.error("JSON Error:", e);
+                throw new Error("The database node returned an invalid format. Please try again.");
             });
 
             if (!res.ok) {
                 if (res.status === 401) clearAuth();
-                throw new Error(json.message || `System Error ${res.status}`);
+                throw new Error(json.message || `Database Error ${res.status}`);
             }
             
             return json;
         } catch (e: any) {
             clearTimeout(timeoutId);
-            if (e.name === 'AbortError') throw new Error("Connection Timeout. The database node is waking up, please try again.");
+            if (e.name === 'AbortError') throw new Error("Connection Timeout. The server is taking too long to respond.");
             if (e.message.includes('Failed to fetch')) {
                 throw new Error("Database Unreachable. Check your internet or ensure " + MASTER_API_URL + " is online.");
             }

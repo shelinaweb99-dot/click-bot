@@ -14,7 +14,6 @@ async function connectToDatabase() {
 
     try {
         mongoose.set('strictQuery', false);
-        // Optimized settings for serverless functions
         const opts = {
             bufferCommands: false,
             serverSelectionTimeoutMS: 8000,
@@ -27,7 +26,7 @@ async function connectToDatabase() {
         return cachedDb;
     } catch (e) {
         console.error("Database connection failed:", e);
-        throw new Error("Database Node Unreachable. Please try again in 5 seconds.");
+        throw new Error("Database Node Unreachable. Please check MONGODB_URI in Vercel settings.");
     }
 }
 
@@ -46,11 +45,15 @@ async function authenticateUser(req) {
 }
 
 export default async function handler(req, res) {
-    // Force JSON responses even for errors
+    // 1. FORCE JSON HEADERS IMMEDIATELY
     res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Telegram-Init-Data');
+    
+    // 2. BROAD CORS FOR ANDROID APPS
+    const origin = req.headers.origin || '*';
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Telegram-Init-Data, Accept');
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
 
     if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -59,6 +62,9 @@ export default async function handler(req, res) {
         const { action, ...data } = req.body || {};
         
         if (!action) return res.status(400).json({ message: "No action provided" });
+
+        // Connectivity Ping
+        if (action === 'ping') return res.json({ status: 'online', time: new Date().toISOString() });
 
         if (action === 'login' || action === 'register') {
             const email = data.email?.toLowerCase().trim();
@@ -69,7 +75,7 @@ export default async function handler(req, res) {
             const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
             if (!user) {
-                if (action === 'login') return res.status(404).json({ message: "Node record not found. Check email or register." });
+                if (action === 'login') return res.status(404).json({ message: "Account not found." });
                 const hashedPassword = await bcrypt.hash(data.password, 10);
                 user = await User.create({
                     id: 'u_' + Date.now(), 
@@ -84,8 +90,8 @@ export default async function handler(req, res) {
                     country: data.country || 'Global'
                 });
             } else {
-                if (action === 'register') return res.status(400).json({ message: "Email identifier already exists." });
-                if (!(await bcrypt.compare(data.password, user.password))) return res.status(401).json({ message: "Authentication failed: Incorrect secret key." });
+                if (action === 'register') return res.status(400).json({ message: "Email already exists." });
+                if (!(await bcrypt.compare(data.password, user.password))) return res.status(401).json({ message: "Incorrect password." });
                 user.sessionToken = newToken; 
                 user.tokenExpires = expires;
                 await user.save();
@@ -94,7 +100,7 @@ export default async function handler(req, res) {
         }
 
         const currentUser = await authenticateUser(req);
-        if (!currentUser) return res.status(401).json({ message: "Identity sync expired. Re-authenticate required." });
+        if (!currentUser) return res.status(401).json({ message: "Session expired. Please login again." });
 
         // Action Router
         switch (action) {
@@ -108,14 +114,14 @@ export default async function handler(req, res) {
                 return res.json({ success: true });
             case 'completeTask': {
                 const task = await Task.findOne({ id: data.taskId }).lean();
-                if (!task) return res.status(404).json({ message: "Mission no longer available." });
+                if (!task) return res.status(404).json({ message: "Task not found." });
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: task.reward } });
                 await Transaction.create({ id: 'tx_' + Date.now(), userId: currentUser.id, taskId: task.id, amount: task.reward, type: 'EARNING', description: task.title, date: new Date().toISOString() });
                 await Task.updateOne({ id: task.id }, { $inc: { completedCount: 1 } });
                 return res.json({ success: true, reward: task.reward });
             }
             case 'createWithdrawal': {
-                if (currentUser.balance < data.request.amount) return res.status(400).json({ message: "Insufficient vault balance." });
+                if (currentUser.balance < data.request.amount) return res.status(400).json({ message: "Insufficient balance." });
                 await User.updateOne({ id: currentUser.id }, { $inc: { balance: -data.request.amount } });
                 await Withdrawal.create({ ...data.request, userId: currentUser.id, status: 'PENDING', date: new Date().toISOString() });
                 return res.json({ success: true });
@@ -133,10 +139,10 @@ export default async function handler(req, res) {
                 return res.json({ success: true });
             case 'processReferral': {
                 const referrer = await User.findOne({ id: data.code });
-                if (!referrer || referrer.id === currentUser.id) return res.status(400).json({ message: "Invalid node identifier code." });
+                if (!referrer || referrer.id === currentUser.id) return res.status(400).json({ message: "Invalid referral code." });
                 await User.updateOne({ id: currentUser.id }, { $set: { referredBy: data.code }, $inc: { balance: 10 } });
                 await User.updateOne({ id: referrer.id }, { $inc: { balance: 25, referralCount: 1 } });
-                return res.json({ success: true, message: "Yield protocol applied!" });
+                return res.json({ success: true, message: "Referral applied successfully!" });
             }
             case 'saveTask':
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();
@@ -146,10 +152,10 @@ export default async function handler(req, res) {
                 if (currentUser.role !== 'ADMIN') return res.status(403).end();
                 await Task.deleteOne({ id: data.id });
                 return res.json({ success: true });
-            default: return res.status(400).json({ message: "Unknown system protocol action" });
+            default: return res.status(400).json({ message: "Unknown action" });
         }
     } catch (e) {
         console.error("Handler Error:", e);
-        return res.status(500).json({ message: e.message || "Internal System Error" });
+        return res.status(500).json({ message: "Server error. Check Vercel logs." });
     }
 }
