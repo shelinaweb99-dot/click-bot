@@ -31,15 +31,19 @@ import { UserRole } from './types';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode; requiredRole?: UserRole }> = ({ children, requiredRole }) => {
   const userId = getCurrentUserId();
-  const role = getUserRole() || (localStorage.getItem('app_user_role') as UserRole) || UserRole.USER;
+  const role = getUserRole() || (localStorage.getItem('app_user_role') as UserRole);
 
   if (!userId) {
     return <Navigate to="/login" replace />;
   }
 
-  // Handle cross-role access (Admins can view User pages, but Users cannot view Admin pages)
-  if (requiredRole === UserRole.ADMIN && role !== UserRole.ADMIN) {
-    return <Navigate to="/dashboard" replace />;
+  // Fast-boot logic: If we have the role in storage, assume it's valid to start rendering
+  // The component within will handle fresh data fetching
+  if (requiredRole && role && role !== requiredRole) {
+    // If user tries to access admin but is USER, redirect to dashboard
+    if (requiredRole === UserRole.ADMIN && role === UserRole.USER) {
+        return <Navigate to="/dashboard" replace />;
+    }
   }
 
   return <>{children}</>;

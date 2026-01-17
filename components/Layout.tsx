@@ -1,6 +1,7 @@
 
-import React, { useEffect, useState, useRef } from 'react';
-import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+/* Added useNavigate to imports */
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { 
   Home, 
   CheckSquare, 
@@ -30,24 +31,23 @@ export const UserLayout: React.FC<{ children: React.ReactNode }> = ({ children }
   const [adSettings, setAdSettings] = useState<AdSettings | null>(null);
   const [userName, setUserName] = useState<string>('');
 
-  const fetchUserData = async () => {
+  const fetchLayoutData = async (silent = false) => {
     const id = getCurrentUserId();
     if (id) {
-      const u = await getUserById(id, true);
-      if (u) setUserName(u.name.split(' ')[0]);
+        // These calls now use the mockDb caching layer, making them very fast
+        const [u, ads] = await Promise.all([
+            getUserById(id, silent),
+            getAdSettings()
+        ]);
+        if (u) setUserName(u.name.split(' ')[0]);
+        if (ads) setAdSettings(ads);
     }
   };
 
   useEffect(() => {
-    const fetchAds = async () => {
-      const ads = await getAdSettings();
-      setAdSettings(ads);
-    };
-    fetchAds();
-    fetchUserData();
+    fetchLayoutData();
     const unsub = subscribeToChanges(() => {
-      fetchAds();
-      fetchUserData();
+      fetchLayoutData(true);
     });
     return unsub;
   }, []);
@@ -85,7 +85,7 @@ export const UserLayout: React.FC<{ children: React.ReactNode }> = ({ children }
       
       <main 
         className={`flex-1 w-full max-w-2xl mx-auto p-4 sm:p-6 ${isGames ? 'pt-2' : ''}`}
-        style={{ paddingBottom: `${6 + (bannerHeight / 4) + 6}rem` }} // Dynamically calc bottom padding
+        style={{ paddingBottom: `${6 + (bannerHeight / 4) + 6}rem` }}
       >
         {children}
       </main>
@@ -128,32 +128,20 @@ export const UserLayout: React.FC<{ children: React.ReactNode }> = ({ children }
 
 export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
-  const location = useLocation();
   const [isVerifying, setIsVerifying] = useState(true);
-  const checkTimer = useRef<any>(null);
 
   useEffect(() => {
-    if (checkTimer.current) clearTimeout(checkTimer.current);
-
-    checkTimer.current = setTimeout(() => {
-        const id = getCurrentUserId();
-        const role = getUserRole();
-        
-        if (!id || role !== UserRole.ADMIN) {
-          console.warn("Security Breach Detected: Unauthenticated access to Administrative Node.");
-          navigate('/login', { replace: true });
-        } else {
-          setIsVerifying(false);
-        }
-    }, 300);
-
-    return () => {
-        if (checkTimer.current) clearTimeout(checkTimer.current);
-    };
-  }, [location.pathname, navigate]);
+    const id = getCurrentUserId();
+    const role = getUserRole();
+    if (!id || role !== UserRole.ADMIN) {
+      navigate('/login', { replace: true });
+    } else {
+      setIsVerifying(false);
+    }
+  }, [navigate]);
 
   const handleLogout = () => {
-    if(window.confirm('Action Required: Terminate secure administrative session?')) {
+    if(window.confirm('Terminate admin session?')) {
       logout();
       navigate('/login', { replace: true });
     }
@@ -162,11 +150,7 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
   if (isVerifying) {
     return (
       <div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center space-y-6">
-        <div className="relative">
-          <Loader2 className="animate-spin text-blue-500" size={48} />
-          <div className="absolute inset-0 bg-blue-500/10 blur-xl animate-pulse"></div>
-        </div>
-        <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.3em] animate-pulse">Verifying Root Privileges</p>
+        <Loader2 className="animate-spin text-blue-500" size={48} />
       </div>
     );
   }
@@ -181,7 +165,6 @@ export const AdminLayout: React.FC<{ children: React.ReactNode }> = ({ children 
            </div>
            <div>
              <h2 className="text-lg font-black text-white tracking-tighter uppercase leading-none">Admin</h2>
-             <p className="text-[8px] font-black text-blue-500 uppercase tracking-widest mt-1.5 opacity-80 italic">Root Authority</p>
            </div>
         </div>
 

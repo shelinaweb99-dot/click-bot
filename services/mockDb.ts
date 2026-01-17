@@ -1,36 +1,32 @@
 
 import { User, Task, WithdrawalRequest, UserRole, Transaction, AdSettings, SystemSettings, Announcement, GameSettings, ShortVideo, ShortsSettings, WithdrawalMethod } from '../types';
 
-/**
- * PRODUCTION CONFIGURATION
- * Using the trailing slash ensures Vercel routes directly to the function
- * and avoids hidden redirects that return index.html.
- */
-const MASTER_API_URL = 'https://click-bot-delta.vercel.app/api';
+const API_URL = '/api';
 
-const getApiBaseUrl = () => {
-    if (typeof window !== 'undefined') {
-        const { hostname, origin } = window.location;
-        
-        // 1. If we are running directly on the Vercel domain, relative paths are fastest.
-        if (origin.includes('click-bot-delta.vercel.app')) {
-            return '/api';
-        }
+// --- PERFORMANCE CACHE ENGINE ---
+const _cache: Record<string, { data: any, timestamp: number }> = {};
+const _pendingRequests: Record<string, Promise<any>> = {};
+const CACHE_TTL = 60000; // 60 seconds of memory life
 
-        // 2. Local development
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
-            return '/api';
-        }
-    }
-    
-    // 3. For APK, Telegram, and standalone wrappers, ALWAYS use the absolute URL.
-    return MASTER_API_URL;
+const getCached = (key: string) => {
+    const item = _cache[key];
+    if (item && (Date.now() - item.timestamp < CACHE_TTL)) return item.data;
+    return null;
 };
 
-const API_URL = getApiBaseUrl();
+const setCache = (key: string, data: any) => {
+    _cache[key] = { data, timestamp: Date.now() };
+};
 
-// --- API ENGINE ---
-const _pendingRequests: Record<string, Promise<any>> = {};
+const clearCache = (keyPrefix?: string) => {
+    if (keyPrefix) {
+        Object.keys(_cache).forEach(k => {
+            if (k.startsWith(keyPrefix)) delete _cache[k];
+        });
+    } else {
+        Object.keys(_cache).forEach(k => delete _cache[k]);
+    }
+};
 
 const getAuthToken = () => localStorage.getItem('session_token'); 
 const setAuthToken = (token: string) => localStorage.setItem('session_token', token);
@@ -41,27 +37,28 @@ const clearAuth = () => {
     localStorage.removeItem('session_token'); 
     localStorage.removeItem('app_user_id'); 
     localStorage.removeItem('app_user_role');
+    clearCache();
 };
 
 const apiCall = async (action: string, data: any = {}, forceRefresh = false) => {
     const cacheKey = `${action}_${JSON.stringify(data)}`;
+    
+    if (!forceRefresh) {
+        const cached = getCached(cacheKey);
+        if (cached) return cached;
+    }
+    
     if (_pendingRequests[cacheKey]) return _pendingRequests[cacheKey];
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000); 
+    const timeoutId = setTimeout(() => controller.abort(), 15000); 
     
     const requestPromise = (async () => {
         try {
             const token = getAuthToken();
             const tgData = (window as any).Telegram?.WebApp?.initData || '';
             
-            // Resolve final URL correctly for Android environments
-            let finalUrl = API_URL;
-            if (finalUrl.startsWith('/') && typeof window !== 'undefined') {
-                finalUrl = window.location.origin + finalUrl;
-            }
-
-            const res = await fetch(finalUrl, {
+            const res = await fetch(API_URL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -74,34 +71,18 @@ const apiCall = async (action: string, data: any = {}, forceRefresh = false) => 
             });
             clearTimeout(timeoutId);
 
-            const contentType = res.headers.get("content-type") || "";
-            
-            // DETECT ROUTING ERRORS (Android fallback to index.html)
-            if (contentType.includes("text/html") || res.status === 404) {
-                const text = await res.text();
-                if (text.trim().startsWith("<") || res.status === 404) {
-                    console.error("API Routing Error at:", finalUrl);
-                    throw new Error("Server configuration error: The API returned a web page instead of data. Please ensure your Vercel deployment is healthy and vercel.json is correct.");
-                }
-            }
-
-            const json = await res.json().catch((e) => {
-                console.error("JSON Error:", e);
-                throw new Error("The database node returned an invalid format. Please try again.");
-            });
-
             if (!res.ok) {
                 if (res.status === 401) clearAuth();
-                throw new Error(json.message || `Database Error ${res.status}`);
+                const errorJson = await res.json().catch(() => ({}));
+                throw new Error(errorJson.message || `Server Error ${res.status}`);
             }
-            
+
+            const json = await res.json();
+            setCache(cacheKey, json);
             return json;
         } catch (e: any) {
             clearTimeout(timeoutId);
-            if (e.name === 'AbortError') throw new Error("Connection Timeout. The server is taking too long to respond.");
-            if (e.message.includes('Failed to fetch')) {
-                throw new Error("Database Unreachable. Check your internet or ensure " + MASTER_API_URL + " is online.");
-            }
+            if (e.name === 'AbortError') throw new Error("Connection Timeout");
             throw e;
         } finally {
             delete _pendingRequests[cacheKey];
@@ -117,11 +98,13 @@ const apiCall = async (action: string, data: any = {}, forceRefresh = false) => 
 export const initMockData = () => {
     const token = getAuthToken();
     if (token) {
-        apiCall('getUser', {}, true).catch(() => {});
+        // Just warm up the cache
+        apiCall('getUser', {}, false).catch(() => {});
     }
 };
 
 export const loginUser = async (email: string, password: string) => {
+    clearCache();
     const response = await apiCall('login', { email, password }, true);
     if (response.token) {
         setAuthToken(response.token);
@@ -132,6 +115,7 @@ export const loginUser = async (email: string, password: string) => {
 };
 
 export const registerUser = async (email: string, password: string, userData: Partial<User>) => {
+    clearCache();
     const response = await apiCall('register', { email, password, ...userData }, true);
     if (response.token) {
         setAuthToken(response.token);
@@ -148,6 +132,7 @@ export const getUserById = async (id: string, force = false) => apiCall('getUser
 
 export const saveUser = async (user: User) => {
     const res = await apiCall('saveUser', { user }, true);
+    setCache('getUser_{}', user); 
     window.dispatchEvent(new Event('db_change'));
     return res;
 };
@@ -155,12 +140,15 @@ export const saveUser = async (user: User) => {
 export const getTasks = async (force = false): Promise<Task[]> => apiCall('getTasks', {}, force);
 export const verifyAndCompleteTask = async (userId: string, taskId: string, verificationAnswer?: string) => {
     const res = await apiCall('completeTask', { taskId, verificationAnswer }, true);
+    clearCache('getTasks');
+    clearCache('getUser');
     window.dispatchEvent(new Event('db_change'));
     return res;
 };
 
 export const claimDailyReward = async (userId: string) => {
     const res = await apiCall('dailyCheckIn', {}, true);
+    clearCache('getUser');
     window.dispatchEvent(new Event('db_change'));
     return res;
 };
@@ -168,6 +156,7 @@ export const claimDailyReward = async (userId: string) => {
 export const getTransactions = async (userId: string, force = false): Promise<Transaction[]> => apiCall('getTransactions', {}, force);
 export const createWithdrawal = async (req: WithdrawalRequest) => {
     const res = await apiCall('createWithdrawal', { request: req }, true);
+    clearCache('getUser');
     window.dispatchEvent(new Event('db_change'));
     return res;
 }
@@ -196,12 +185,14 @@ export const saveAdSettings = async (s: AdSettings) => {
 
 export const saveTask = async (task: Task) => {
     const res = await apiCall('saveTask', { payload: task }, true);
+    clearCache('getTasks');
     window.dispatchEvent(new Event('db_change'));
     return res;
 }
 
 export const deleteTask = async (id: string) => {
     const res = await apiCall('deleteTask', { id }, true);
+    clearCache('getTasks');
     window.dispatchEvent(new Event('db_change'));
     return res;
 }
@@ -231,6 +222,7 @@ export const updateAllPaymentMethods = async (methods: WithdrawalMethod[]) => {
 
 export const recordAdReward = async (u: string) => {
     const res = await apiCall('completeAd', {}, true);
+    clearCache('getUser');
     window.dispatchEvent(new Event('db_change'));
     return res;
 }
@@ -268,6 +260,7 @@ export const deleteAnnouncement = async (id: string) => {
 };
 
 export const getGameSettings = async (): Promise<GameSettings> => apiCall('getSettings', { key: 'games' });
+
 export const saveGameSettings = async (settings: GameSettings) => {
     const res = await apiCall('saveSettings', { key: 'games', payload: settings }, true);
     window.dispatchEvent(new Event('db_change'));
@@ -276,11 +269,13 @@ export const saveGameSettings = async (settings: GameSettings) => {
 
 export const playMiniGame = async (userId: string, gameType: string) => {
     const res = await apiCall('playGame', { gameType }, true);
+    clearCache('getUser');
     window.dispatchEvent(new Event('db_change'));
     return res;
 };
 
 export const getShortsSettings = async (): Promise<ShortsSettings> => apiCall('getSettings', { key: 'shorts' });
+
 export const saveShortsSettings = async (settings: ShortsSettings) => {
     const res = await apiCall('saveSettings', { key: 'shorts', payload: settings }, true);
     window.dispatchEvent(new Event('db_change'));
@@ -289,12 +284,14 @@ export const saveShortsSettings = async (settings: ShortsSettings) => {
 
 export const addShort = async (url: string) => {
     const res = await apiCall('addShort', { url }, true);
+    clearCache('getShorts');
     window.dispatchEvent(new Event('db_change'));
     return res;
 };
 
 export const deleteShort = async (id: string) => {
     const res = await apiCall('deleteShort', { id }, true);
+    clearCache('getShorts');
     window.dispatchEvent(new Event('db_change'));
     return res;
 };
@@ -302,25 +299,10 @@ export const deleteShort = async (id: string) => {
 export const getShorts = async (): Promise<ShortVideo[]> => apiCall('getShorts', {}, false);
 export const recordShortView = async (userId: string, videoId: string) => {
     const res = await apiCall('recordShortView', { videoId }, true);
+    clearCache('getUser');
     window.dispatchEvent(new Event('db_change'));
     return res;
 };
 
-export const savePaymentMethod = async (method: WithdrawalMethod) => {
-    const methods = await getPaymentMethods();
-    const existingIndex = methods.findIndex(m => m.id === method.id);
-    if (existingIndex > -1) methods[existingIndex] = method;
-    else methods.push(method);
-    return updateAllPaymentMethods(methods);
-};
-
-export const deletePaymentMethod = async (id: string) => {
-    const methods = await getPaymentMethods();
-    const filtered = methods.filter(m => m.id !== id);
-    return updateAllPaymentMethods(filtered);
-};
-
 export const changePassword = async (oldPassword: string, newPassword: string) => 
     apiCall('changePassword', { oldPassword, newPassword }, true);
-
-export const triggerHoneypot = async () => apiCall('triggerHoneypot', {}, true);

@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { getPaymentMethods, savePaymentMethod, deletePaymentMethod, updateAllPaymentMethods, getSystemSettings, saveSystemSettings, changePassword } from '../../services/mockDb';
+/* Removed non-existent savePaymentMethod and deletePaymentMethod from imports */
+import { getPaymentMethods, updateAllPaymentMethods, getSystemSettings, saveSystemSettings, changePassword } from '../../services/mockDb';
 import { WithdrawalMethod, SystemSettings } from '../../types';
 import { Plus, Trash2, Save, Bot, Lock, Code, Info, RefreshCcw, ToggleLeft, ToggleRight, DollarSign, Loader2, CreditCard, Users, ShieldAlert, Key } from 'lucide-react';
 
@@ -73,7 +74,9 @@ export const AdminSettings: React.FC = () => {
           detailsLabel: newMethodLabel,
           isEnabled: true
         };
-        await savePaymentMethod(method);
+        /* Replaced missing savePaymentMethod with updateAllPaymentMethods */
+        const updatedMethods = [...methods, method];
+        await updateAllPaymentMethods(updatedMethods);
         setNewMethodName('');
         setNewMethodLabel('');
         window.dispatchEvent(new Event('db_change'));
@@ -84,7 +87,9 @@ export const AdminSettings: React.FC = () => {
   const handleDeleteMethod = async (id: string) => {
     if (window.confirm('Delete this payment method?')) {
       try { 
-          await deletePaymentMethod(id); 
+          /* Replaced missing deletePaymentMethod with updateAllPaymentMethods */
+          const updatedMethods = methods.filter(m => m.id !== id);
+          await updateAllPaymentMethods(updatedMethods);
           window.dispatchEvent(new Event('db_change'));
           await loadData(); 
       } catch (e) { alert("Failed to delete method"); }

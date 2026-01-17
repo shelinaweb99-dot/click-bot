@@ -1,7 +1,8 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { User, Transaction } from '../../types';
-import { getCurrentUserId, getUserById, getTransactions, subscribeToChanges, claimDailyReward, triggerHoneypot } from '../../services/mockDb';
+/* Removed triggerHoneypot from imports */
+import { getCurrentUserId, getUserById, getTransactions, subscribeToChanges, claimDailyReward } from '../../services/mockDb';
 import { TrendingUp, Award, Clock, CalendarCheck, Trophy, Loader2, Users, Sparkles } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { PullToRefresh } from '../../components/PullToRefresh';
@@ -87,7 +88,7 @@ export const UserDashboard: React.FC = () => {
     <PullToRefresh onRefresh={() => fetchData(true)}>
       <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-300 pb-10 max-w-full overflow-x-hidden">
         
-        <button onClick={() => triggerHoneypot()} className="opacity-0 absolute pointer-events-auto h-0 w-0 overflow-hidden" aria-hidden="true" tabIndex={-1}>Admin Debug</button>
+        {/* Removed missing triggerHoneypot button */}
 
         <div className="mesh-gradient rounded-[1.8rem] sm:rounded-[2.5rem] p-5 sm:p-8 shadow-[0_20px_40px_rgba(37,99,235,0.25)] text-white relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity pointer-events-none">

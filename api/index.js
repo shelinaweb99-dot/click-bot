@@ -16,9 +16,9 @@ async function connectToDatabase() {
         mongoose.set('strictQuery', false);
         const opts = {
             bufferCommands: false,
-            serverSelectionTimeoutMS: 8000,
+            serverSelectionTimeoutMS: 5000, // Faster failure if DB is down
             connectTimeoutMS: 10000,
-            maxPoolSize: 5
+            maxPoolSize: 10 // Increased for better concurrency
         };
         
         const conn = await mongoose.connect(uri, opts);
@@ -26,7 +26,7 @@ async function connectToDatabase() {
         return cachedDb;
     } catch (e) {
         console.error("Database connection failed:", e);
-        throw new Error("Database Node Unreachable. Please check MONGODB_URI in Vercel settings.");
+        throw new Error("Database Node Unreachable.");
     }
 }
 
@@ -45,15 +45,11 @@ async function authenticateUser(req) {
 }
 
 export default async function handler(req, res) {
-    // 1. FORCE JSON HEADERS IMMEDIATELY
     res.setHeader('Content-Type', 'application/json');
-    
-    // 2. BROAD CORS FOR ANDROID APPS
     const origin = req.headers.origin || '*';
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Telegram-Init-Data, Accept');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
 
     if (req.method === 'OPTIONS') return res.status(200).end();
 
@@ -62,9 +58,6 @@ export default async function handler(req, res) {
         const { action, ...data } = req.body || {};
         
         if (!action) return res.status(400).json({ message: "No action provided" });
-
-        // Connectivity Ping
-        if (action === 'ping') return res.json({ status: 'online', time: new Date().toISOString() });
 
         if (action === 'login' || action === 'register') {
             const email = data.email?.toLowerCase().trim();
@@ -100,9 +93,8 @@ export default async function handler(req, res) {
         }
 
         const currentUser = await authenticateUser(req);
-        if (!currentUser) return res.status(401).json({ message: "Session expired. Please login again." });
+        if (!currentUser) return res.status(401).json({ message: "Session expired." });
 
-        // Action Router
         switch (action) {
             case 'getUser': return res.json(currentUser);
             case 'getTasks': return res.json(await Task.find({ status: 'ACTIVE' }).lean());
@@ -156,6 +148,6 @@ export default async function handler(req, res) {
         }
     } catch (e) {
         console.error("Handler Error:", e);
-        return res.status(500).json({ message: "Server error. Check Vercel logs." });
+        return res.status(500).json({ message: "Internal server error." });
     }
 }
